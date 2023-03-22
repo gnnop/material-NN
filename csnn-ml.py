@@ -11,12 +11,6 @@ import optax
 def net_fn(batch: np.ndarray) -> jnp.ndarray:
   """Standard LeNet-300-100 MLP network."""
   x = batch.astype(jnp.float32)
-  
-  clp = hk.Sequential([
-    hk.Linear(20), jax.nn.relu,
-    hk.Linear(20), jax.nn.relu,
-    hk.Linear(15)
-  ])
 
   parallelMap = hk.Sequential([
     hk.Linear(27), jax.nn.relu,
@@ -36,29 +30,37 @@ def net_fn(batch: np.ndarray) -> jnp.ndarray:
   symM = jnp.concatenate(x[:, 0:6], symmatrix)
 
 
-  mlp = hk.Sequential([#2530 - attempt deep
+  mlp = hk.Sequential([
       hk.Flatten(),
       hk.Linear(500), jax.nn.relu,
+      hk.Linear(500), jax.nn.relu,
+      hk.Linear(400), jax.nn.relu,
+      hk.Linear(300), jax.nn.relu,
       hk.Linear(200), jax.nn.relu,
+      hk.Linear(100), jax.nn.relu,
       hk.Linear(50), jax.nn.relu,
-      hk.Linear(50), jax.nn.relu,
-      hk.Linear(3),
+      hk.Linear(20), jax.nn.relu,
+      hk.Linear(globals["labelSize"])
   ])
 
+  return mlp(symM)
 
+#maybe a better way to shuffle data exists, but... ?
+#Also, could try vmapping
+def mixAtoms(listOfData):
+  return listOfData
 
-  return mlp(symM)#It might make sense to add in an extra flatten to make this make sense.
-
-def main(_):
+def main(obj):
   # Make the network and optimiser.
   net = hk.without_apply_rng(hk.transform(net_fn))
   opt = optax.adam(1e-3)
 
   # Training loss (cross-entropy).
-  def loss(params: hk.Params, batch: np.ndarray) -> jnp.ndarray:
+  def loss(params: hk.Params, batch: np.ndarray, labels: np.ndarray) -> jnp.ndarray:
+    global globals
     """Compute the loss of the network, including L2."""
-    logits = net.apply(params, batch[:,:-1])
-    labels = jax.nn.one_hot(batch[:,-1], 3)
+    logits = net.apply(params, batch)
+    #The labels are prehotted
 
     l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_leaves(params))
     softmax_xent = -jnp.sum(labels * jax.nn.log_softmax(logits))
@@ -68,18 +70,23 @@ def main(_):
 
   # Evaluation metric (classification accuracy).
   @jax.jit
-  def accuracy(params: hk.Params, batch: np.ndarray) -> jnp.ndarray:
-    predictions = net.apply(params, batch[:,:-1])
-    return jnp.mean(jnp.argmax(predictions, axis=-1) == batch[:,-1])
+  def accuracy(params: hk.Params, batch: np.ndarray, labels: np.ndarray) -> jnp.ndarray:
+    global globals
+    predictions = net.apply(params, batch)
+    hot_pred = jax.lax.map(
+      lambda a: jax.lax.eq(jnp.arange(globals["labelSize"]), jnp.argmax(a)).astype(float),
+      predictions)
+    return jnp.mean(jnp.equal(hot_pred, labels).all(axis=1))
 
   @jax.jit
   def update(
       params: hk.Params,
       opt_state: optax.OptState,
       batch: np.ndarray,
+      labels: np.ndarray,
   ) -> Tuple[hk.Params, optax.OptState]:
     """Learning rule (stochastic gradient descent)."""
-    grads = jax.grad(loss)(params, batch)
+    grads = jax.grad(loss)(params, batch, labels)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return new_params, opt_state
@@ -91,15 +98,10 @@ def main(_):
     return optax.incremental_update(params, avg_params, step_size=0.001)
 
   # Make datasets.
-  with open('data.csv', 'r', newline='') as file:
-    reader = csv.reader(file, quoting=csv.QUOTE_NONNUMERIC)
-    data = list(reader)
-    #now all data is in a list of lists
-    processedStuff = np.array(data)
-    iterData = list(np.array_split(processedStuff, 1000))
+  iterData = list(np.array_split(np.array(obj), 1000))
 
   # Initialize network and optimiser; note we draw an input to get shapes.
-  params = avg_params = net.init(jax.random.PRNGKey(42), iterData[0][:,:-1])
+  params = avg_params = net.init(jax.random.PRNGKey(42), iterData[0][:,:-globals["labelSize"]])
   opt_state = opt.init(params)
 
   ii = 1
@@ -111,8 +113,12 @@ def main(_):
     
     if step % 100 == 0:
       # Periodically evaluate classification accuracy on train & test sets.
-      train_accuracy = accuracy(avg_params, iterData[ii])
-      test_accuracy = accuracy(avg_params, iterData[0])
+      train_accuracy = accuracy(avg_params, 
+                                mixAtoms(iterData[ii][:,:-globals["labelSize"]]),
+                                          iterData[ii][:, -globals["labelSize"]:])
+      test_accuracy = accuracy(avg_params,
+                                mixAtoms(iterData[0][:,:-globals["labelSize"]]),
+                                         iterData[0][:, -globals["labelSize"]:])
       train_accuracy, test_accuracy = jax.device_get(
           (train_accuracy, test_accuracy))
       print(f"[Step {step}] Train / Test accuracy: "
@@ -120,15 +126,10 @@ def main(_):
 
     
     # Do SGD on a batch of training examples.
-    params, opt_state = update(params, opt_state, iterData[ii])
+    params, opt_state = update(params, opt_state, 
+                               mixAtoms(iterData[ii][:,:-globals["labelSize"]]), 
+                                         iterData[ii][:, -globals["labelSize"]:])
     avg_params = ema_update(params, avg_params)
 
 
 cmd_line(main, "csnn")
-
-
-"""
-In theory good for multi-threading, but I don't know enough about it
-"""
-#if __name__ == "__main__":
-#  app.run(main)
