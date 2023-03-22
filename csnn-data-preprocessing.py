@@ -4,8 +4,7 @@ import sys
 
 #This isn't writing the predictions yet. I'm going to dump those in a separate file for ease of thought
 def format(rFile, wFile, sym, topo):
-    global globalLabelSize
-    global globalDataSize
+    global globals
     global maxSize
     global atomSize
     with open(rFile, 'r', newline='') as file:
@@ -14,9 +13,9 @@ def format(rFile, wFile, sym, topo):
         for row in reader:
             poscar = list(map(lambda a: a.strip(), row[0].split("\\n")))
 
-            arr = [0]*(globalDataSize + atomSize*maxSize + globalLabelSize)#9 init vals, maxSize spots for atoms, 5 final categories - 1 for the simple topo
+            arr = [0]*(globals["dataSize"] + atomSize*maxSize + globals["labelSize"])#9 init vals, maxSize spots for atoms, 5 final categories - 1 for the simple topo
 
-            arr[0:globalDataSize] = getGlobalData(poscar, row, sym)
+            arr[:globals["dataSize"]] = getGlobalData(poscar, row, sym)
 
             atoms = poscar[5].split()
             numbs = poscar[6].split()
@@ -26,6 +25,7 @@ def format(rFile, wFile, sym, topo):
                 total+=int(numbs[i])
                 numbs[i] = total
             
+
             curIndx = 0
             atomType = 0
             for i in range(total):
@@ -33,10 +33,11 @@ def format(rFile, wFile, sym, topo):
                 if curIndx > numbs[atomType]:
                     atomType+=1
 
-                arr[globalDataSize + i*atomSize:globalDataSize + (i+1)*atomSize] = serializeAtom(atoms[atomType], poscar, i)
+                arr[globals["dataSize"] + i*atomSize:globals["dataSize"] + (i+1)*atomSize] = serializeAtom(atoms[atomType], poscar, i)
             
-            arr[globalDataSize + maxSize*atomSize:] = convertTopoToIndex(row, topo)
-            
+            #This should be dumping an array into the end of the array
+            arr[-globals["labelSize"]:] = convertTopoToIndex(row, topo)
+
             outPutls.append(arr)
         
         with open(wFile, 'wb') as wFile:
