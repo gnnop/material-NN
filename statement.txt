@@ -1,0 +1,18 @@
+This is intended to be an ML file ready for public release.
+I'm going to spend some time on implementation difficulties and code compactness.
+
+
+
+The dataset names are obvious.
+
+All data is loaded into the data subfolder after processing.
+Model-parameters are hashed into the models subfolder
+
+
+To get the unpacking stuff to work, you have to unzip the csv's first.
+
+
+
+
+
+Please note that the embedder I have currently is useless.
