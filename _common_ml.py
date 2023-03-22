@@ -312,7 +312,7 @@ def cmd_line(func, name):
         # 1 index specifies data, no more
         # 2 specified representation, pass on f, c, n for full, compressed or nan symmetry
         if nameLs[2] == "f":
-            globals["dataSize"] = 13
+            globals["dataSize"] = 14
         elif nameLs[2] == "c":
             globals["dataSize"] = 38
         else:

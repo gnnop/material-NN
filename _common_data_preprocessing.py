@@ -408,8 +408,6 @@ def convertTopoToIndex(rows, topo):
 
 maxSize = 60
 atomSize = 27
-globalDataSize = 0
-globalLabelSize = 0
 
 
 def unpackLine(str):
@@ -427,7 +425,7 @@ def getGlobalData(poscar, row, spec_str):
 
     if spec_str == "f":
         return [np.linalg.norm(a), np.linalg.norm(b), np.linalg.norm(c), alpha, beta, gamma,
-                *np.unpackbits(np.array([int(row[2].strip())],dtype=np.uint8))] #6 + log(128) = 13
+                *np.unpackbits(np.array([int(row[2].strip())],dtype=np.uint8))] #6 + log(128) = 13 +1 because there's a useless bit
     elif spec_str == "c":
         return [np.linalg.norm(a), np.linalg.norm(b), np.linalg.norm(c), alpha, beta, gamma, 
             *jax.nn.one_hot(serializeSpaceGroup(int(row[2].strip())), 32)] #6 + 32 = 38
@@ -437,10 +435,13 @@ def getGlobalData(poscar, row, spec_str):
 def getGlobalDataVector(poscar):
     return np.array([unpackLine(poscar[2]), unpackLine(poscar[3]), unpackLine(poscar[4])])
 
+globals = {
+    "dataSize" : 0,
+    "labelSize" : 0
+}
 
 def cmd_line(func, name):
-    global globalDataSize
-    global globalLabelSize
+    global globals
     if len(sys.argv) == 4:
         #sanity check:
         if not (sys.argv[2] == "f" or sys.argv[2] == "c" or sys.argv[2] == "n"):
@@ -452,16 +453,16 @@ def cmd_line(func, name):
             exit()
         
         if sys.argv[2] == "f":
-            globalDataSize = 13
+            globals["dataSize"] = 14
         elif sys.argv[2] == "c":
-            globalDataSize = 38
+            globals["dataSize"] = 38
         else:
-            globalDataSize = 6
+            globals["dataSize"] = 6
         
         if sys.argv[3] == "f":
-            globalLabelSize = 5
+            globals["labelSize"] = 5
         else:
-            globalLabelSize = 3
+            globals["labelSize"] = 3
 
         func(sys.argv[1] + ".csv", "./data/" + sys.argv[1] + "-" + sys.argv[2] + "-" + sys.argv[3] + "-" + name +"-data.obj", sys.argv[2], sys.argv[3])
     else:
