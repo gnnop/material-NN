@@ -9,26 +9,29 @@ import numpy as np
 import optax
 
 def net_fn(batch: np.ndarray) -> jnp.ndarray:
+  global globals
   """Standard LeNet-300-100 MLP network."""
-  x = batch.astype(jnp.float32)
 
-  parallelMap = hk.Sequential([
-    hk.Linear(27), jax.nn.relu,
+  # Define the neural network to apply to the concatenated vectors
+  plp = hk.Sequential([
+    hk.Linear(40), jax.nn.relu,
     hk.Linear(40), jax.nn.relu,
     hk.Linear(60), jax.nn.relu,
     hk.Linear(80), jax.nn.relu,
-    hk.Linear(100), jax.nn.relu
+    hk.Linear(80), jax.nn.relu,
   ])
 
-  globSpec = jnp.repeat(x[:, 0:6], 60)
-  altSpec = jax.numpy.reshape(x[:, 6:-1], (27, 60))
-  feedIn = jnp.concatenate(globSpec, altSpec)
-  symmatrix = hk.Flatten(jax.lax.reduce(jax.lax.add, jax.vmap(parallelMap)(feedIn)))#no clue if this works
+  global_elements = batch[:, :globals["dataSize"]]
+  reshaped_x = jnp.reshape(batch[:, globals["dataSize"]:], (batch.shape[0], 60, 27))
+  combined_input = jnp.concatenate([jnp.repeat(global_elements[:, None, :], 60, axis=1), reshaped_x], axis=-1)
 
-  #Now, add the global vector back in
+  # Apply MLP to each of the 60 subvectors
+  transformed_vectors = jax.vmap(jax.vmap(plp))(combined_input)
 
-  symM = jnp.concatenate(x[:, 0:6], symmatrix)
+  # Combine the results by summing along the second axis
+  combined_result = jnp.sum(transformed_vectors, axis=1)
 
+  final_feedthrough = jnp.concatenate([global_elements, combined_result], axis=-1)
 
   mlp = hk.Sequential([
       hk.Flatten(),
@@ -43,7 +46,7 @@ def net_fn(batch: np.ndarray) -> jnp.ndarray:
       hk.Linear(globals["labelSize"])
   ])
 
-  return mlp(symM)
+  return mlp(final_feedthrough)
 
 #maybe a better way to shuffle data exists, but... ?
 #Also, could try vmapping
