@@ -2,3 +2,4 @@ Records for different ML runs,,
 ,,
 Name,Trainging Performance,Testing Performance
 naïve-ml,0.649,0.622
+csnn,0.73,0.649

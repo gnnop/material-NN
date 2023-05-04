@@ -1,3 +1,4 @@
+from _common_ml import *
 import functools
 import matplotlib.pyplot as plt
 import jax
@@ -19,7 +20,20 @@ import jax.numpy as jnp
 import haiku as hk
 import trimesh
 
-def convFunc(batch):
+
+
+"""
+Not synced up. Make changes at the same time
+"""
+maxDims = 60#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
+conversionFactor = 2
+#need to be able to rep atoms, probably have 3* max unit cell
+maxRep = 7 + 16 + 2 + 1 #3 - atomic distance, 1 - unit cell mask
+dims = (maxDims, maxDims, maxDims, maxRep)
+centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
+
+
+def net_fn(batch):
 
   mlp = hk.Sequential([
     hk.Conv3D(out_channels=60, kernel_shape=3, stride=1), jnp.nn.relu,
@@ -37,29 +51,35 @@ def convFunc(batch):
     hk.Linear(40), jnp.nn.relu,
     hk.Linear(20), jnp.nn.relu,
     hk.Linear(10), jnp.nn.relu,
-    hk.Linear(5)
+    hk.Linear(globals["labelSize"])
   ])
 
   return mlp(batch)
 
 
-def compute_loss(params: hk.Params, graph: jraph.GraphsTuple, label: jnp.ndarray,
-                 net: jraph.GraphsTuple) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def compute_loss(params, batch, label, net):
   """Computes loss and accuracy."""
-  logits = net.apply(params, batch[:,:-1])
-  labels = jax.nn.one_hot(batch[:,-1], 3)
+  logits = net.apply(params, batch)
 
   l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_leaves(params))
-  softmax_xent = -jnp.sum(labels * jax.nn.log_softmax(logits))
-  softmax_xent /= labels.shape[0]
+  softmax_xent = -jnp.sum(label * jax.nn.log_softmax(logits))
+  softmax_xent /= label.shape[0]
 
   loss = softmax_xent + 1e-4 * l2_loss
-  accuracy = jnp.mean(jnp.argmax(predictions, axis=-1) == batch[:,-1])
-  
+  accuracy = jnp.average(
+      (jnp.argmax(logits, axis=1) == jnp.argmax(label, axis=1)))
   return loss, accuracy
 
-def prep_data():
-  return 0
+
+def prep_data(dicnglobal):
+  space = jnp.ones((maxDims, maxDims, maxDims, maxRep + dic[0])))
+  
+  coords = trimesh.points.PointCloud(global_points).convex_hull.contains(np.indices((maxDim, maxDim, maxDim)))
+  #SHould be coords which need a 1:
+  space[coords, maxRep - 2] = 1#something like this
+  space[list(dic.keys())] = list(dic.values())
+  
+  return space
 
 def prep_label():
   return 0
@@ -79,11 +99,11 @@ def evaluate(dataset: List[Any],
   accumulated_accuracy = 0
   compute_loss_fn = jax.jit(functools.partial(compute_loss, net=net))
   for idx in range(len(dataLabels)):
-    graph = dataset[idx]#graph
+    obj = dataset[idx]#graph
     label = dataLabels[idx]#label
-    graph = pad_graph_to_nearest_power_of_two(graph)
-    label = jnp.concatenate((jnp.array([label]), jnp.array([0])))
-    loss, acc = compute_loss_fn(params, graph, label)
+    temp_objs = map(prep_data, [obj]])
+    temp_labels = [label]
+    loss, acc = compute_loss_fn(params, temp_objs, temp_labels)
     accumulated_accuracy += acc
     accumulated_loss += loss
   print('Completed evaluation.')
@@ -105,26 +125,20 @@ def implantDicInArrWMask(dic, array, global_points):
 
 
 
-def main():
+def main(obj):
     print("initializing")
-    #We first need to load all the data.
-
-    with open("big-baddest-dataset.pyobj", "rb") as file:
-      obj = pickle.load(file)
-
-    print("loaded")
 
     #Then, we loop over the data a couple of times with periodic evals.
     #The data needs to be shuffled.
-    graphs, labels = (obj[0], obj[1])#unison_shuffled_copies(obj[0], obj[1])
+    objs, labels = (obj[0], obj[1])#unison_shuffled_copies(obj[0], obj[1])
 
     net = hk.without_apply_rng(hk.transform(net_fn))
     # Initialize the network.
-    params = net.init(jax.random.PRNGKey(42), graphs[0])
+    params = net.init(jax.random.PRNGKey(42), objs[0])
 
     #modify this to look for a current parameter set.
-    if exists("model-dump-5.params"):
-      with open('model-dump-5.params', 'rb') as file:
+    if exists("ccnn.params"):
+      with open('ccnn.params', 'rb') as file:
         params = pickle.load(file)
 
     # Initialize the optimizer.
@@ -142,9 +156,9 @@ def main():
     num_train_steps = 150000
 
 
-    testGraphs = graphs[:(math.floor(len(labels) / 10))]
+    testObjects = objs[:(math.floor(len(labels) / 10))]
     testLabels = labels[:(math.floor(len(labels) / 10))]
-    trainingGraphs = graphs[math.floor(len(labels) / 10):]
+    trainingObjects = objs[math.floor(len(labels) / 10):]
     trainingLabels = labels[math.floor(len(labels) / 10):]
 
     print("starting training")
@@ -156,26 +170,29 @@ def main():
 
     print("point 1")
 
-    accumGraph = [0]*math.floor(num / batchSize)
+    accumObject = [0]*math.floor(num / batchSize)
     accumLabel = [0]*math.floor(num / batchSize)
 
     for i in range(math.floor(num / batchSize)):
-      accumGraph[i] = trainingGraphs[batchSize * i:batchSize * (i+1)]
+      accumObject[i] = trainingObjects[batchSize * i:batchSize * (i+1)]
       accumLabel[i] = trainingLabels[batchSize * i:batchSize * (i+1)]
 
     print("point 2")
+
+    #test pool based multithreading later to see if there's
+    #a speed up
 
     try:
         for idy in range(num_train_steps):
 
             #TODO: determined manually, dedicate a thread to processing data, and another thread to feeding it to the GPU:
+            #convolutions are currently linearly expanded with each batch on the fly:
 
-            temp_expand = map(lambda g: ,batchedGraph[idy % len(batchedLabel)])
-
-            
+            temp_objs = map(prep_data, accumObject[idy])
+            temp_labels = accumLabel[idy]
 
             #t0 = time.time()
-            (loss, acc), grad = compute_loss_fn(params, batchedGraph[idy % len(batchedLabel)], batchedLabel[idy % len(batchedLabel)])
+            (loss, acc), grad = compute_loss_fn(params, temp_objs, temp_labels)
 
             updates, opt_state = opt_update(grad, opt_state, params)
             params = optax.apply_updates(params, updates)
@@ -185,7 +202,7 @@ def main():
             if idy % 100 == 0:
                 print(f'step: {idy}, loss: {loss}, acc: {acc}')
             if idy % 2000 == 999:
-                evaluate(testGraphs, testLabels, params)
+                evaluate(testObjects, testLabels, params)
     except KeyboardInterrupt:
         file = open('model-dump-5.params', 'wb')
         pickle.dump(params, file)
@@ -193,7 +210,7 @@ def main():
         print("Failsafe")
         exit()
 
-    evaluate(testGraphs, testLabels, params)
+    evaluate(testObjects, testLabels, params)
     print('Training finished')
 
     #If training is finished, just dump everything, so I can use it again, or start from the new stuff.
@@ -204,5 +221,4 @@ def main():
     print("Bye")
     exit()
 
-if __name__ == "__main__":
-    main()
+cmd_line(main, "cgnn")
