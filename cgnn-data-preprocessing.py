@@ -84,8 +84,7 @@ def atomDistance(params, loc1, loc2):
 tots = 0
 
 def extractGraph(row, sym):
-    global globalDataSize
-    global globalLabelSize
+    global globals
     global tots
 
     tots += 1
@@ -97,8 +96,8 @@ def extractGraph(row, sym):
     str = re.sub(r"\s+", "", str)
     poscar = list(map(lambda a: a.strip(), row[0].split("\\n")))
 
-    globalData = [0.0]*(globalDataSize + globalLabelSize)
-    globalData[0:globalDataSize] = getGlobalData(poscar, row, sym)
+    globalData = [0.0]*(globals["dataSize"] + globals["labelSize"])
+    globalData[0:globals["dataSize"]] = getGlobalData(poscar, row, sym)
 
 
     atoms = poscar[5].split()
@@ -147,7 +146,7 @@ def extractGraph(row, sym):
         senders=jnp.array(senderArray), 
         receivers=jnp.array(receiverArray), 
         edges=jnp.array(edgeFeatures), 
-        globals=jnp.array(globalData),
+        globals=jnp.array([globalData]),
         n_node=jnp.array([len(nodesArray)]),
         n_edge=jnp.array([len(senderArray)]))
 
@@ -162,6 +161,7 @@ def format(read_obj, write_obj, sym, topo):
         graphs = pool.map(lambda g : extractGraph(g, sym), totalFiles)
         labels = pool.map( lambda row: convertTopoToIndex(row, topo), totalFiles)
         with open(write_obj, 'wb') as file:
+            print(graphs[0].globals.shape)
             pickle.dump([graphs, labels], file)
 
 

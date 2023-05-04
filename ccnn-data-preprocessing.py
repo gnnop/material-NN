@@ -83,7 +83,7 @@ def dataEncoder(row, sym):
     
     #Add in convex points deteremining unit cell, to deteremine the ones array
 
-    return [[globalInfo, sorted(list(encoding))]]
+    return [globalInfo, sorted(list(encoding))]
 
 def format(read_file, write_file, sym, topo):
     with open(read_file, 'r', newline='') as file:
