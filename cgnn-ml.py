@@ -223,23 +223,8 @@ def net_fn(graph: jraph.GraphsTuple) -> jraph.GraphsTuple:
       update_edge_fn=edge_update_fn,
       update_global_fn=update_global_fn)
   
-  print(graph.edges.shape)
-  print(graph.globals.shape)
-  print(graph.n_edge.shape)
-  print(graph.n_node.shape)
-  print(graph.receivers.shape)
-  print(graph.senders.shape)
-  print("graph minor")
   x1 = embedder(graph)
-  print(x1.edges.shape)
-  print(x1.globals.shape)
-  print(x1.n_edge.shape)
-  print(x1.n_node.shape)
-  print(x1.receivers.shape)
-  print(x1.senders.shape)
-  print("graph proper")
-  x2 = net(x1)#something's wrong this line
-  print(x2)
+  x2 = net(x1)
   x3 = collector(x2)
 
   #return graph
