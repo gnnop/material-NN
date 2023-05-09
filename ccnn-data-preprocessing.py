@@ -15,7 +15,7 @@ import pickle
 #We determine rough inclusion based on overlap
 #the position should be in terms of the indices
 def givenPointDetermineCubeAndOverlap(position):
-    index = np.round(position)
+    index = np.round(position).astype(int)
     comp = lambda i, p : -1 if p < i else 1
     indices = list(itertools.product(*[[0, comp(index[i], position[i])] for i in range(3)]))
     points = [tuple(index + np.array(indices[i])) for i in range(8)]
@@ -28,8 +28,8 @@ def randomRotateBasis(vecOfVecs):
 	return np.matmul(rot, vecOfVecs)
 
 
-maxDims = 60#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
-conversionFactor = 2
+maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
+conversionFactor = 3#Always scale the maxDims with the conversionFactor
 #need to be able to rep atoms, probably have 3* max unit cell
 maxRep = 7 + 16 + 2 + 1 #3 - atomic distance, 1 - unit cell mask
 dims = (maxDims, maxDims, maxDims, maxRep)
@@ -76,14 +76,14 @@ def dataEncoder(row, sym):
             points, vol = givenPointDetermineCubeAndOverlap(atomToArray(np.dot(unpackLine(poscar[8+i]), axes) + np.dot(j, axes), axes))
             for jj in range(len(points)):
                 if points[jj] not in encoding:
-                    encoding[points[jj]] = (vol[jj], atoms[atomType])
+                    encoding[points[jj]] = (vol[jj], *serializeAtom(atoms[atomType], poscar, i))
                 else:
                     print("Enlarge the encoding! It's too small")
                     exit()
     
     #Add in convex points deteremining unit cell, to deteremine the ones array
-
-    return [globalInfo, sorted(list(encoding))]
+    #Need to return axes for reconstruction
+    return (axes, (globalInfo, (list(encoding.keys()), list(encoding.values()))))
 
 def format(read_file, write_file, sym, topo):
     with open(read_file, 'r', newline='') as file:
@@ -92,11 +92,14 @@ def format(read_file, write_file, sym, topo):
         dataset = []
         datalabels = []
 
+        ii = 0
         for row in reader:
+            print(ii)
+            ii = ii + 1
             dataset.append(dataEncoder(row, sym))
             datalabels.append(convertTopoToIndex(row, topo))
         
         with open(write_file, 'wb') as file:
-            pickle.dump(dataset, file)
+            pickle.dump((dataset, datalabels), file)
 
 cmd_line(format, "ccnn")

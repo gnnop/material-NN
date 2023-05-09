@@ -25,36 +25,45 @@ import trimesh
 """
 Not synced up. Make changes at the same time
 """
-maxDims = 60#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
-conversionFactor = 2
+maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
+conversionFactor = 3
 #need to be able to rep atoms, probably have 3* max unit cell
 maxRep = 7 + 16 + 2 + 1 #3 - atomic distance, 1 - unit cell mask
 dims = (maxDims, maxDims, maxDims, maxRep)
 centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
 
+#Converts stuff to stuff.
+def atomToArray(position, axes):
+    basePoint = centre - conversionFactor * ((axes[0] + axes[1] + axes[2]) / 2)
+    return conversionFactor * np.matmul(position, axes) + basePoint#Is this right?
 
 def net_fn(batch):
 
+  cnet = hk.Sequential([
+    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=40, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=20, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=20, kernel_shape=3, stride=1), jax.nn.relu])
+  
+  y1 = cnet(batch)
+
+  y2 = y1.reshape((y1.shape[0], -1)) #flatten
+
   mlp = hk.Sequential([
-    hk.Conv3D(out_channels=60, kernel_shape=3, stride=1), jnp.nn.relu,
-    hk.Conv3D(out_channels=60, kernel_shape=3, stride=1), jnp.nn.reul,
-    hk.Conv3D(out_channels=60, kernel_shape=3, stride=1), jnp.nn.reul,
-    hk.Conv3D(out_channels=40, kernel_shape=3, stride=1), jnp.nn.reul,
-    hk.Conv3D(out_channels=20, kernel_shape=3, stride=1), jnp.nn.relu,
-    hk.Conv3D(out_channels=20, kernel_shape=3, stride=1), jnp.nn.relu,
-    hk.Reshape(output_shape=(-1)),
-    hk.Linear(400), jnp.nn.relu,
-    hk.Linear(300), jnp.nn.relu,
-    hk.Linear(200), jnp.nn.relu,
-    hk.Linear(100), jnp.nn.relu,
-    hk.Linear(50), jnp.nn.relu,
-    hk.Linear(40), jnp.nn.relu,
-    hk.Linear(20), jnp.nn.relu,
-    hk.Linear(10), jnp.nn.relu,
+    hk.Linear(400), jax.nn.relu,
+    hk.Linear(300), jax.nn.relu,
+    hk.Linear(200), jax.nn.relu,
+    hk.Linear(100), jax.nn.relu,
+    hk.Linear(50), jax.nn.relu,
+    hk.Linear(40), jax.nn.relu,
+    hk.Linear(20), jax.nn.relu,
+    hk.Linear(10), jax.nn.relu,
     hk.Linear(globals["labelSize"])
   ])
 
-  return mlp(batch)
+  return mlp(y2)
 
 
 def compute_loss(params, batch, label, net):
@@ -71,13 +80,43 @@ def compute_loss(params, batch, label, net):
   return loss, accuracy
 
 
+cube_points = np.array([[0,0,0],[1,1,1], 
+                        [0, 0, 1],[0, 1, 0],[1, 0, 0],
+                        [1, 1, 0],[1, 0, 1],[0, 1, 1]])
+
 def prep_data(dicnglobal):
-  space = jnp.ones((maxDims, maxDims, maxDims, maxRep + dic[0])))
+  #this is formatted as: [axes, [global, dictionary]]
+  space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[0][0].shape[0]))
   
-  coords = trimesh.points.PointCloud(global_points).convex_hull.contains(np.indices((maxDim, maxDim, maxDim)))
-  #SHould be coords which need a 1:
-  space[coords, maxRep - 2] = 1#something like this
-  space[list(dic.keys())] = list(dic.values())
+  #We get the global points by putting in the corners of a box
+  convexPoints = np.array([atomToArray(i, dicnglobal[0]) for i in cube_points])
+
+  indices = np.transpose(np.indices((maxDims, maxDims, maxDims)).reshape(3, -1))
+  
+  coords = trimesh.points.PointCloud(convexPoints).convex_hull.contains(indices)
+  
+  # Convert coords to indices using numpy.where
+  true_indices = indices[coords]
+  print(true_indices.shape)
+
+  # Assign 1 to space at the true_indices
+  space[tuple(true_indices.T), maxRep - 2] = 1
+
+  # The final step is to fill in the global values so I can use a uniform convolutional network:
+  # Convert list of indices to tuple for indexing
+  dict_indices = tuple(np.array(dicnglobal[1][1][0]).T)
+  print(space.shape)
+  print(np.array(dicnglobal[1][1][1]).shape)
+  #shape conversion errors abound. 
+  #I need two more lines, then it probably works
+  space[dict_indices, 0:maxRep] = dicnglobal[1][1][1]
+
+  #Finally, fill in the tiled global values:
+  globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
+
+  space[:,:,:,-globs.shape[0]:] = globs
+
+  #In theory done
   
   return space
 
@@ -101,7 +140,7 @@ def evaluate(dataset: List[Any],
   for idx in range(len(dataLabels)):
     obj = dataset[idx]#graph
     label = dataLabels[idx]#label
-    temp_objs = map(prep_data, [obj]])
+    temp_objs = map(prep_data, [obj])
     temp_labels = [label]
     loss, acc = compute_loss_fn(params, temp_objs, temp_labels)
     accumulated_accuracy += acc
@@ -134,7 +173,7 @@ def main(obj):
 
     net = hk.without_apply_rng(hk.transform(net_fn))
     # Initialize the network.
-    params = net.init(jax.random.PRNGKey(42), objs[0])
+    params = net.init(jax.random.PRNGKey(42), prep_data(objs[0]))
 
     #modify this to look for a current parameter set.
     if exists("ccnn.params"):
@@ -221,4 +260,4 @@ def main(obj):
     print("Bye")
     exit()
 
-cmd_line(main, "cgnn")
+cmd_line(main, "ccnn")
