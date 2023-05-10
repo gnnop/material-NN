@@ -28,8 +28,7 @@ Not synced up. Make changes at the same time
 maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
 conversionFactor = 3
 #need to be able to rep atoms, probably have 3* max unit cell
-maxRep = 7 + 16 + 2 + 1 #3 - atomic distance, 1 - unit cell mask
-dims = (maxDims, maxDims, maxDims, maxRep)
+maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
 centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
 
 #Converts stuff to stuff.
@@ -49,9 +48,8 @@ def net_fn(batch):
   
   y1 = cnet(batch)
 
-  y2 = y1.reshape((y1.shape[0], -1)) #flatten
-
   mlp = hk.Sequential([
+    hk.Flatten(),
     hk.Linear(400), jax.nn.relu,
     hk.Linear(300), jax.nn.relu,
     hk.Linear(200), jax.nn.relu,
@@ -63,7 +61,7 @@ def net_fn(batch):
     hk.Linear(globals["labelSize"])
   ])
 
-  return mlp(y2)
+  return mlp(y1)
 
 
 def compute_loss(params, batch, label, net):
@@ -86,7 +84,7 @@ cube_points = np.array([[0,0,0],[1,1,1],
 
 def prep_data(dicnglobal):
   #this is formatted as: [axes, [global, dictionary]]
-  space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[0][0].shape[0]))
+  space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[1][0].size))
   
   #We get the global points by putting in the corners of a box
   convexPoints = np.array([atomToArray(i, dicnglobal[0]) for i in cube_points])
@@ -97,27 +95,18 @@ def prep_data(dicnglobal):
   
   # Convert coords to indices using numpy.where
   true_indices = indices[coords]
-  print(true_indices.shape)
 
   # Assign 1 to space at the true_indices
   space[tuple(true_indices.T), maxRep - 2] = 1
 
   # The final step is to fill in the global values so I can use a uniform convolutional network:
-  # Convert list of indices to tuple for indexing
-  dict_indices = tuple(np.array(dicnglobal[1][1][0]).T)
-  print(space.shape)
-  print(np.array(dicnglobal[1][1][1]).shape)
-  #shape conversion errors abound. 
-  #I need two more lines, then it probably works
-  space[dict_indices, 0:maxRep] = dicnglobal[1][1][1]
+  for idx, ls in zip(dicnglobal[1][1][0], dicnglobal[1][1][1]):
+     space[idx[0], idx[1], idx[2], -maxRep:] = ls
 
   #Finally, fill in the tiled global values:
   globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
 
-  space[:,:,:,-globs.shape[0]:] = globs
-
-  #In theory done
-  
+  space[:,:,:,-dicnglobal[1][0].size:] = globs
   return space
 
 def prep_label():
@@ -151,21 +140,13 @@ def evaluate(dataset: List[Any],
   print(f'Eval loss: {loss}, accuracy {accuracy}')
   return loss, accuracy
 
-
-def implantDicInArrWMask(dic, array, global_points):
-  #Doesn't work, but is indicative
-  coords = trimesh.points.PointCloud(global_points).convex_hull.contains(np.indices((maxDim, maxDim, maxDim)))
-  #SHould be coords which need a 1:
-  array[coords, maxRep - 2] = 1#something like this
-  for i in dic:
-    array[dic, :] = i
-  
-  return array#NEEDS LOTS OF CHECKS
-
-
-
 def main(obj):
     print("initializing")
+
+    #test pool based multithreading later to see if there's
+    #a speed up
+
+    pool = ThreadPool(20)
 
     #Then, we loop over the data a couple of times with periodic evals.
     #The data needs to be shuffled.
@@ -218,16 +199,13 @@ def main(obj):
 
     print("point 2")
 
-    #test pool based multithreading later to see if there's
-    #a speed up
-
     try:
         for idy in range(num_train_steps):
 
             #TODO: determined manually, dedicate a thread to processing data, and another thread to feeding it to the GPU:
             #convolutions are currently linearly expanded with each batch on the fly:
 
-            temp_objs = map(prep_data, accumObject[idy])
+            temp_objs = np.array(list(pool.map(prep_data, accumObject[idy])))
             temp_labels = accumLabel[idy]
 
             #t0 = time.time()
