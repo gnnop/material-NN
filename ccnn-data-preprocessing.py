@@ -31,7 +31,7 @@ def randomRotateBasis(vecOfVecs):
 maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
 conversionFactor = 3#Always scale the maxDims with the conversionFactor
 #need to be able to rep atoms, probably have 3* max unit cell
-maxRep = 7 + 16 + 2 + 1 #3 - atomic distance, 1 - unit cell mask
+maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
 dims = (maxDims, maxDims, maxDims, maxRep)
 centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
 
@@ -46,7 +46,7 @@ def atomToArray(position, axes):
 def dataEncoder(row, sym):
 
     poscar = list(map(lambda a: a.strip(), row[0].split("\\n")))
-    globalInfo = getGlobalData(poscar, row, sym)
+    globalInfo = np.array(getGlobalData(poscar, row, sym))
     axes = randomRotateBasis(getGlobalDataVector(poscar))
 
 
@@ -75,11 +75,13 @@ def dataEncoder(row, sym):
             #This tiles out everything. Then, I dither the pixels or whatevery
             points, vol = givenPointDetermineCubeAndOverlap(atomToArray(np.dot(unpackLine(poscar[8+i]), axes) + np.dot(j, axes), axes))
             for jj in range(len(points)):
-                if points[jj] not in encoding:
-                    encoding[points[jj]] = (vol[jj], *serializeAtom(atoms[atomType], poscar, i))
-                else:
-                    print("Enlarge the encoding! It's too small")
-                    exit()
+                #Additional logical check. Points need to be in the ranges specified:
+                if points[jj][0] < maxDims and points[jj][1] < maxDims and points[jj][2] < maxDims and points[jj][0] >= 0 and points[jj][1] >= 0 and points[jj][2] >= 0:
+                    if points[jj] not in encoding:
+                        encoding[points[jj]] = (vol[jj], *serializeAtom(atoms[atomType], poscar, i))
+                    else:
+                        print("Enlarge the encoding! It's too small")
+                        exit()
     
     #Add in convex points deteremining unit cell, to deteremine the ones array
     #Need to return axes for reconstruction
