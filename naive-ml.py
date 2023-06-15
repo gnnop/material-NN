@@ -110,6 +110,7 @@ def main(obj):
   iterData = list(np.array_split(np.array(obj), 1000))
 
   # Initialize network and optimiser; note we draw an input to get shapes.
+  print(iterData[0][:,:-globals["labelSize"]].shape)
   params = avg_params = net.init(jax.random.PRNGKey(42), iterData[0][:,:-globals["labelSize"]])
   opt_state = opt.init(params)
 

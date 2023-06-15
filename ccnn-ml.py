@@ -25,7 +25,7 @@ import trimesh
 """
 Not synced up. Make changes at the same time
 """
-maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
+maxDims = 48#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
 conversionFactor = 3
 #need to be able to rep atoms, probably have 3* max unit cell
 maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
@@ -38,24 +38,24 @@ def atomToArray(position, axes):
 
 def net_fn(batch):
 
+  #Literally insane. This is still too large
   cnet = hk.Sequential([
     hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
     hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
     hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
     hk.Conv3D(output_channels=40, kernel_shape=3, stride=1), jax.nn.relu,
     hk.Conv3D(output_channels=20, kernel_shape=3, stride=1), jax.nn.relu,
-    hk.Conv3D(output_channels=20, kernel_shape=3, stride=1), jax.nn.relu])
+    hk.Conv3D(output_channels=5, kernel_shape=3, stride=1), jax.nn.relu])
   
   y1 = cnet(batch)
 
+  #DANGER! The MLP conversion is the first number * y1.size. In a batch, this
+  #easily exceeds single GPU VRAM with 62^3 * 4 * 20 * 20 * ? = 50 GB. I have 8GB, so reduce everything!
+
   mlp = hk.Sequential([
     hk.Flatten(),
-    hk.Linear(400), jax.nn.relu,
-    hk.Linear(300), jax.nn.relu,
-    hk.Linear(200), jax.nn.relu,
-    hk.Linear(100), jax.nn.relu,
-    hk.Linear(50), jax.nn.relu,
     hk.Linear(40), jax.nn.relu,
+    hk.Linear(30), jax.nn.relu,
     hk.Linear(20), jax.nn.relu,
     hk.Linear(10), jax.nn.relu,
     hk.Linear(globals["labelSize"])
@@ -63,12 +63,15 @@ def net_fn(batch):
 
   return mlp(y1)
 
-
+@jax.jit
 def compute_loss(params, batch, label, net):
   """Computes loss and accuracy."""
   logits = net.apply(params, batch)
 
   l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_leaves(params))
+  #Glitch here.
+  print(type(label))
+  print(type(logits))
   softmax_xent = -jnp.sum(label * jax.nn.log_softmax(logits))
   softmax_xent /= label.shape[0]
 
@@ -82,6 +85,7 @@ cube_points = np.array([[0,0,0],[1,1,1],
                         [0, 0, 1],[0, 1, 0],[1, 0, 0],
                         [1, 1, 0],[1, 0, 1],[0, 1, 1]])
 
+#Uses mutability  @jax.jit
 def prep_data(dicnglobal):
   #this is formatted as: [axes, [global, dictionary]]
   space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[1][0].size))
@@ -112,6 +116,7 @@ def prep_data(dicnglobal):
 def prep_label():
   return 0
 
+@jax.jit
 def evaluate(dataset: List[Any],
              dataLabels: List[Any],
              params: hk.Params) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -130,7 +135,7 @@ def evaluate(dataset: List[Any],
     obj = dataset[idx]#graph
     label = dataLabels[idx]#label
     temp_objs = map(prep_data, [obj])
-    temp_labels = [label]
+    temp_labels = jnp.array([label])
     loss, acc = compute_loss_fn(params, temp_objs, temp_labels)
     accumulated_accuracy += acc
     accumulated_loss += loss
@@ -153,8 +158,12 @@ def main(obj):
     objs, labels = (obj[0], obj[1])#unison_shuffled_copies(obj[0], obj[1])
 
     net = hk.without_apply_rng(hk.transform(net_fn))
+
+    print("pre init")
     # Initialize the network.
-    params = net.init(jax.random.PRNGKey(42), prep_data(objs[0]))
+    params = net.init(jax.random.PRNGKey(42), np.expand_dims(prep_data(objs[0]), axis=0))
+
+    print("initted")
 
     #modify this to look for a current parameter set.
     if exists("ccnn.params"):
@@ -182,7 +191,7 @@ def main(obj):
     trainingLabels = labels[math.floor(len(labels) / 10):]
 
     print("starting training")
-    batchSize = 20
+    batchSize = 10
     num = len(trainingLabels) - batchSize
 
     #I try to fix the performance issue by reshaping the list ahead of time, then measuring its in-app performance
@@ -195,12 +204,13 @@ def main(obj):
 
     for i in range(math.floor(num / batchSize)):
       accumObject[i] = trainingObjects[batchSize * i:batchSize * (i+1)]
-      accumLabel[i] = trainingLabels[batchSize * i:batchSize * (i+1)]
+      accumLabel[i] = jnp.array(trainingLabels[batchSize * i:batchSize * (i+1)])
 
     print("point 2")
 
     try:
         for idy in range(num_train_steps):
+            print(idy)
 
             #TODO: determined manually, dedicate a thread to processing data, and another thread to feeding it to the GPU:
             #convolutions are currently linearly expanded with each batch on the fly:

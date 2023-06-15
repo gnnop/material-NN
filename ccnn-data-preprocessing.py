@@ -10,7 +10,7 @@ import itertools
 from _common_data_preprocessing import *
 import pickle
 
-
+#Work on minifying data
 #The atom is modeled as a width one box. The points are modelled as width 1 boxes centered at the thing.
 #We determine rough inclusion based on overlap
 #the position should be in terms of the indices
@@ -28,8 +28,9 @@ def randomRotateBasis(vecOfVecs):
 	return np.matmul(rot, vecOfVecs)
 
 
-maxDims = 62#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
-conversionFactor = 3#Always scale the maxDims with the conversionFactor
+#For the encoding, I eliminated
+maxDims = 48#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
+conversionFactor = 2.7#Always scale the maxDims with the conversionFactor
 #need to be able to rep atoms, probably have 3* max unit cell
 maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
 dims = (maxDims, maxDims, maxDims, maxRep)
@@ -80,6 +81,7 @@ def dataEncoder(row, sym):
                     if points[jj] not in encoding:
                         encoding[points[jj]] = (vol[jj], *serializeAtom(atoms[atomType], poscar, i))
                     else:
+                        print(row)
                         print("Enlarge the encoding! It's too small")
                         exit()
     
