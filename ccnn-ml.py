@@ -19,6 +19,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import jax.numpy as jnp
 import haiku as hk
 import trimesh
+import time
 
 
 
@@ -63,7 +64,7 @@ def net_fn(batch):
 
   return mlp(y1)
 
-@jax.jit
+#@jax.jit
 def compute_loss(params, batch, label, net):
   """Computes loss and accuracy."""
   logits = net.apply(params, batch)
@@ -116,7 +117,7 @@ def prep_data(dicnglobal):
 def prep_label():
   return 0
 
-@jax.jit
+#@jax.jit
 def evaluate(dataset: List[Any],
              dataLabels: List[Any],
              params: hk.Params) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -215,14 +216,19 @@ def main(obj):
             #TODO: determined manually, dedicate a thread to processing data, and another thread to feeding it to the GPU:
             #convolutions are currently linearly expanded with each batch on the fly:
 
+            start = time.time()
             temp_objs = np.array(list(pool.map(prep_data, accumObject[idy])))
             temp_labels = accumLabel[idy]
+            end = time.time()
+            print("Data preprocessing: " + str(end - start))
 
             #t0 = time.time()
             (loss, acc), grad = compute_loss_fn(params, temp_objs, temp_labels)
 
             updates, opt_state = opt_update(grad, opt_state, params)
             params = optax.apply_updates(params, updates)
+            end2 = time.time()
+            print("NN application: " + str(end2 - end))
 
             #t2 = time.time()
             #print("time two", t2 - t0)
