@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation as R
 import itertools
 from _common_data_preprocessing import *
 import pickle
+import os
 
 #Work on minifying data
 #The atom is modeled as a width one box. The points are modelled as width 1 boxes centered at the thing.
@@ -48,8 +49,9 @@ def dataEncoder(row, sym):
 
     poscar = list(map(lambda a: a.strip(), row[0].split("\\n")))
     globalInfo = np.array(getGlobalData(poscar, row, sym))
-    axes = randomRotateBasis(getGlobalDataVector(poscar))
-
+    #this line is non-deterministic and you can tell that things will go south.
+    #axes = randomRotateBasis(getGlobalDataVector(poscar))
+    axes = getGlobalDataVector(poscar)
 
 	#Choose a center to tile everything out with
 
@@ -98,11 +100,13 @@ def format(read_file, write_file, sym, topo):
 
         ii = 0
         for row in reader:
-            print(ii)
             ii = ii + 1
+            print(ii)
             dataset.append(dataEncoder(row, sym))
             datalabels.append(convertTopoToIndex(row, topo))
         
+        os.makedirs(os.path.dirname(write_file), exist_ok=True)
+
         with open(write_file, 'wb') as file:
             pickle.dump((dataset, datalabels), file)
 
