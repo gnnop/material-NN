@@ -1,37 +1,23 @@
 from _common_ml import *
 import functools
-import matplotlib.pyplot as plt
 import jax
 import jax.numpy as jnp
-import jax.tree_util as tree
-import jraph
 from os.path import exists
 import haiku as hk
 import math
 import optax
 import pickle
 import numpy as np
-import networkx as nx
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from random import shuffle
+from typing import Any, List, Tuple
 import time
 from multiprocessing.dummy import Pool as ThreadPool
 import jax.numpy as jnp
 import haiku as hk
 import trimesh
 import time
-
-
-
-"""
-Not synced up. Make changes at the same time
-"""
-maxDims = 48#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
-conversionFactor = 2.7#Always scale the maxDims with the conversionFactor
-#need to be able to rep atoms, probably have 3* max unit cell
-maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
-dims = (maxDims, maxDims, maxDims, maxRep)
-centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
+import sys, os
+sys.path.append( os.curdir )
+from ccnn_config import *
 
 #Converts stuff to stuff.
 def atomToArray(position, axes):
@@ -129,7 +115,6 @@ def evaluate(dataset: List[Any],
 
   #This should get a timer statement too
   #print(dataset)
-  graph = dataset[0]
   accumulated_loss = 0
   accumulated_accuracy = 0
   compute_loss_fn = jax.jit(functools.partial(compute_loss, net=net))
