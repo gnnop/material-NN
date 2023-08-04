@@ -1,11 +1,40 @@
 import numpy as np
 
-"""
-Not synced up. Make changes at the same time
-"""
-maxDims = 16#Number of cells 60 atom max. cubic root is 4. *2 for space =8, *2.5 for tesselation is 20 *2 (arbitrary) for 40-1.6MB
-conversionFactor = 2.7#Always scale the maxDims with the conversionFactor
-#need to be able to rep atoms, probably have 3* max unit cell
-maxRep = 7 + 16 + 1 + 3 + 1 #3 - atomic distance, 1 - unit cell mask
+
+'''
+The input vector is a 3D lattice of size maxDims x maxDims x maxDims of
+atoms, represented as vectors of size maxRep.
+'''
+maxDims = 24
+
+'''
+It is assumed that all atoms have the same size.
+This is the relative radius of each atom in lattice units.
+Always scale the maxDims with the conversionFactor
+'''
+conversionFactor = 2.7
+
+
+'''
+The size of the vector that represents a single atom. This includes:
+* row on the periodic table         7
+* column on the periodic table / 2  16
+* column on the periodic table % 2  1
+* normalized x, y, z coordinates    3
+* the presence of an atom           1
+'''
+maxRep = 7 + 16 + 1 + 3 + 1 
+
+'''
+The input vector is a 3D lattice of size maxDims x maxDims x maxDims of
+atoms, represented as vectors of size maxRep.
+'''
 dims = (maxDims, maxDims, maxDims, maxRep)
+
+'''
+a 3D vector that represents the center of the lattice in cell units,
+equal to maxDims / 2
+'''
 centre = np.array([maxDims / 2, maxDims / 2, maxDims / 2])
+
+
