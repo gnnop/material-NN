@@ -1,0 +1,4 @@
+data/*
+*.params
+*.pyc
+*.csv
