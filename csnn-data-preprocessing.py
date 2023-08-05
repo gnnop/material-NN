@@ -1,6 +1,5 @@
 from _common_data_preprocessing import *
 import pickle
-import sys
 
 #This isn't writing the predictions yet. I'm going to dump those in a separate file for ease of thought
 def format(rFile, wFile, sym, topo):
