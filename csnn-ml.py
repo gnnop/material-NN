@@ -26,7 +26,7 @@ def net_fn(batch: np.ndarray) -> jnp.ndarray:
   combined_input = jnp.concatenate([jnp.repeat(global_elements[:, None, :], 60, axis=1), reshaped_x], axis=-1)
 
   # Apply MLP to each of the 60 subvectors
-  transformed_vectors = jax.vmap(jax.vmap(plp))(combined_input)
+  transformed_vectors = jax.vmap(plp)(combined_input)
 
   # Combine the results by summing along the second axis
   combined_result = jnp.sum(transformed_vectors, axis=1)

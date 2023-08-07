@@ -8,6 +8,7 @@ import pickle
 import sys, os
 sys.path.append( os.curdir )
 from ccnn_config import *
+from ccnn_shared import *
 
 #Work on minifying data
 #The atom is modeled as a width one box. The points are modelled as width 1 boxes centered at the thing.
@@ -26,11 +27,6 @@ def randomRotateBasis(vecOfVecs):
 	rot = R.random().as_matrix()
 	return np.matmul(rot, vecOfVecs)
 
-
-#Converts stuff to stuff.
-def atomToArray(position, axes):
-    basePoint = centre - conversionFactor * ((axes[0] + axes[1] + axes[2]) / 2)
-    return conversionFactor * np.matmul(position, axes) + basePoint#Is this right?
 
 
 

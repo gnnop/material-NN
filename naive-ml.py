@@ -1,7 +1,5 @@
-from typing import Iterator, Mapping, Tuple
+from typing import Tuple
 from _common_ml import *
-import csv
-from absl import app
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -49,6 +47,7 @@ def net_fn(batch: np.ndarray) -> jnp.ndarray:
 #maybe a better way to shuffle data exists, but... ?
 #Also, could try vmapping
 def mixAtoms(listOfData):
+  '''
   global globals
   permList = list(range(globals["dataSize"] + 27*60))
 
@@ -58,6 +57,8 @@ def mixAtoms(listOfData):
     permList[globals["dataSize"]:] = [globals["dataSize"] + j + perm[i]*27 for j in range(27) for i in range(60)]
     copyOfData[i] = listOfData[i, permList]
   return copyOfData
+  '''
+  return listOfData
 
 def main(obj):
   # Make the network and optimiser.

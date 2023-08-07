@@ -440,36 +440,74 @@ globals = {
     "labelSize" : 0
 }
 
+def print_usage():
+    print('''
+
+Usage: %s input_file_name symmetry_type topology_type
+          
+input_file_name: input file name (without extension, must be csv)
+    examples: tqc-filtered, tqc-mini, tqc-full
+          
+symmetry_type: how to classify crystal symmetry by its space group.
+    must be one of the following:
+        f (full)       : ?
+        c (compressed) : ?
+        n (nan)        : ?
+
+topology_type: how to classify crystals by their topological quantum chemistry.
+    must be one of the following:
+        f (full)       : use five classes:
+            LCEBR (linear combination EBR)
+            SEBR  (Split EBR)
+            NLC   (nonlinear crystal)
+            ES    (enforced semimetals)
+            ESFD  (enforced semimetals with Fermi degeneracy)
+        c (compressed) : use three classes:
+            LCEBR (linear combination EBR)
+            TI    (topological insulator: SEBR or NLC)
+            SM    (semimetal: ES or ESFD)
+            
+
+'''% sys.argv[0])
+# end print_usage
+
+
 def cmd_line(func, name):
     global globals
-    if len(sys.argv) == 4:
-        #sanity check:
-        if not (sys.argv[2] == "f" or sys.argv[2] == "c" or sys.argv[2] == "n"):
-            print("symmetry not specified, use f, c, n : full, compressed, nan")
-            exit()
-        
-        if not (sys.argv[3] == "f" or sys.argv[3] == "c"):
-            print("topology not specified, use f, c : full, compressed")
-            exit()
-        
-        if sys.argv[2] == "f":
-            globals["dataSize"] = 14
-        elif sys.argv[2] == "c":
-            globals["dataSize"] = 38
-        else:
-            globals["dataSize"] = 6
-        
-        if sys.argv[3] == "f":
-            globals["labelSize"] = 5
-        else:
-            globals["labelSize"] = 3
 
-        func(sys.argv[1] + ".csv", "./data/" + sys.argv[1] + "-" + sys.argv[2] + "-" + sys.argv[3] + "-" + name +"-data.obj", sys.argv[2], sys.argv[3])
-    else:
-        if (len(sys.argv) == 2 and sys.argv[1] == "-h"):
-            print("The first command is file name.")
-            print("The next two are sym and topo-label, and they are f(ull), c(ompressed), or n(an)")
-        else:
-            print(sys.argv)
-            print("please use -h")
+    # sanity check: make sure we have the right number of arguments
+    if len(sys.argv) != 4:
+        print("Arguments:")
+        print(sys.argv)
+        print("Expected four arguments, but only %d were given" % (len(sys.argv)))
+        print_usage()
+        return
+    # end if
+    
+    # sanity check: make sure symmetry and topology are valid
+    if not (sys.argv[2] == "f" or sys.argv[2] == "c" or sys.argv[2] == "n"):
+        print("symmetry not specified, use f, c, n : full, compressed, nan")
+        print_usage()
         exit()
+    if not (sys.argv[3] == "f" or sys.argv[3] == "c"):
+        print("topology not specified, use f, c : full, compressed")
+        print_usage()
+        exit()
+    
+    # set globals
+    # symmetry
+    if sys.argv[2] == "f":
+        globals["dataSize"] = 14
+    elif sys.argv[2] == "c":
+        globals["dataSize"] = 38
+    else:
+        globals["dataSize"] = 6
+    # topology
+    if sys.argv[3] == "f":
+        globals["labelSize"] = 5
+    else:
+        globals["labelSize"] = 3
+
+    # run the function with the given parameters
+    func(sys.argv[1] + ".csv", "./data/" + sys.argv[1] + "-" + sys.argv[2] + "-" + sys.argv[3] + "-" + name +"-data.obj", sys.argv[2], sys.argv[3])
+# end cmd_line

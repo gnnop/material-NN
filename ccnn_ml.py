@@ -18,11 +18,8 @@ import time
 import sys, os
 sys.path.append( os.curdir )
 from ccnn_config import *
+from ccnn_shared import *
 
-#Converts stuff to stuff.
-def atomToArray(position, axes):
-    basePoint = centre - conversionFactor * ((axes[0] + axes[1] + axes[2]) / 2)
-    return conversionFactor * np.matmul(position, axes) + basePoint#Is this right?
 
 def net_fn(batch):
 
@@ -64,7 +61,7 @@ def compute_loss(params, batch, label, net):
   softmax_xent /= label.shape[0]
 
   loss = softmax_xent + 1e-4 * l2_loss
-  accuracy = jnp.average(
+  accuracy = jnp.average( # MM: todo
       (jnp.argmax(logits, axis=1) == jnp.argmax(label, axis=1)))
   return loss, accuracy
 
