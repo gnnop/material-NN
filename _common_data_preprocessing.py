@@ -466,6 +466,10 @@ def cmd_line(func, name):
 
         func(sys.argv[1] + ".csv", "./data/" + sys.argv[1] + "-" + sys.argv[2] + "-" + sys.argv[3] + "-" + name +"-data.obj", sys.argv[2], sys.argv[3])
     else:
-        print(sys.argv)
-        print("wrong number of arguments")
+        if (len(sys.argv) == 2 and sys.argv[1] == "-h"):
+            print("The first command is file name.")
+            print("The next two are sym and topo-label, and they are f(ull), c(ompressed), or n(an)")
+        else:
+            print(sys.argv)
+            print("please use -h")
         exit()
