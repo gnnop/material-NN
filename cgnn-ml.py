@@ -96,6 +96,7 @@ def GraphConvolution(update_node_fn: Callable,
     return graph._replace(nodes=nodes)
 
   return _ApplyGCN
+# end _ApplyGCN
 
 
 # Adapted from https://github.com/deepmind/jraph/blob/master/jraph/ogb_examples/train.py
@@ -130,6 +131,7 @@ def pad_graph_to_nearest_power_of_two(
   pad_graphs_to = graphs_tuple.n_node.shape[0] + 1
   return jraph.pad_with_graphs(graphs_tuple, pad_nodes_to, pad_edges_to,
                                pad_graphs_to)
+# end _nearest_bigger_power_of_two
 
 # Adapted from https://github.com/deepmind/jraph/blob/master/jraph/ogb_examples/train.py
 @jraph.concatenated_args
@@ -157,6 +159,7 @@ def node_update_fn(feats: jnp.ndarray) -> jnp.ndarray:
        hk.Linear(256), jax.nn.relu,
        hk.Linear(128)])
   return net(feats)
+# end edge_update_fn
 
 @jraph.concatenated_args
 def update_global_fn(feats: jnp.ndarray) -> jnp.ndarray:
@@ -172,6 +175,7 @@ def update_global_fn(feats: jnp.ndarray) -> jnp.ndarray:
        hk.Linear(256), jax.nn.relu,
        hk.Linear(128)])
   return net(feats)
+# end update_global_fn
 
 def net_fn(graph: jraph.GraphsTuple) -> jraph.GraphsTuple:
   global globals
