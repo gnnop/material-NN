@@ -53,16 +53,15 @@ def compute_loss(params, batch, label, net):
   """Computes loss and accuracy."""
   logits = net.apply(params, batch)
 
-  l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_leaves(params))
+  l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_util.tree_leaves(params))
   #Glitch here.
-  print(type(label))
-  print(type(logits))
   softmax_xent = -jnp.sum(label * jax.nn.log_softmax(logits))
   softmax_xent /= label.shape[0]
 
   loss = softmax_xent + 1e-4 * l2_loss
-  accuracy = jnp.average( # MM: todo
-      (jnp.argmax(logits, axis=1) == jnp.argmax(label, axis=1)))
+  successes = jnp.argmax(logits, axis=1) == jnp.argmax(label, axis=1)
+  accuracy = jnp.average(successes)
+
   return loss, accuracy
 
 
@@ -72,6 +71,10 @@ cube_points = np.array([[0,0,0],[1,1,1],
 
 #Uses mutability  @jax.jit
 def prep_data(dicnglobal):
+  '''
+  Given a dictionary of global and local data, this function returns a 3D array
+  
+  '''
   #this is formatted as: [axes, [global, dictionary]]
   space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[1][0].size))
   
@@ -118,8 +121,9 @@ def evaluate(dataset: List[Any],
   for idx in range(len(dataLabels)):
     obj = dataset[idx]#graph
     label = dataLabels[idx]#label
-    temp_objs = map(prep_data, [obj])
+    temp_objs = np.array(list(map(prep_data, [obj])))
     temp_labels = jnp.array([label])
+    # loss, acc = compute_loss(params, temp_objs, temp_labels, net=net)
     loss, acc = compute_loss_fn(params, temp_objs, temp_labels)
     accumulated_accuracy += acc
     accumulated_loss += loss
@@ -217,7 +221,7 @@ def main(obj):
             #print("time two", t2 - t0)
             if idy % 100 == 0:
                 print(f'step: {idy}, loss: {loss}, acc: {acc}')
-            if idy % 2000 == 999:
+            if idy % 10 == 1:
                 evaluate(testObjects, testLabels, params)
     except KeyboardInterrupt:
         file = open('model-dump-5.params', 'wb')

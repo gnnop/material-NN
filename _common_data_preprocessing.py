@@ -449,9 +449,9 @@ input_file_name: input file name (without extension, must be csv)
           
 symmetry_type: how to classify crystal symmetry by its space group.
     must be one of the following:
-        f (full)       : ?
-        c (compressed) : ?
-        n (nan)        : ?
+        f (full)       : binary representation of the space group number
+        c (compressed) : one-hot encoding of the space group type
+        n (nan)        : don't include symmetries at all
 
 topology_type: how to classify crystals by their topological quantum chemistry.
     must be one of the following:
