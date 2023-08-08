@@ -286,7 +286,7 @@ def atomToCoords(name):
         return [6, 15, 0]
     elif name == "No":
         return [6, 15, 1]
-    elif name == _:
+    else:
         print(name)
         exit()
 
