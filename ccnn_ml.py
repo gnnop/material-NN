@@ -73,7 +73,21 @@ cube_points = np.array([[0,0,0],[1,1,1],
 def prep_data(dicnglobal):
   '''
   Given a dictionary of global and local data, this function returns a 3D array
-  
+  dicnglobal (tuple):
+    [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
+    [1] inputs and outputs (tuple):
+      [0] expected outputs (N array): the expected outputs of the network, 
+          where N is the number of outputs determined by configuring the 
+          symmetry group representation and class types from the command line.
+      [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
+        [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
+            where N is the number of non-zero values in the lattice 
+        [1] values (N array of M-long tuples): the contents of each voxel, which includes
+            anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
+            the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
+            completely covered in this atom).
+            physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
+            one-hot encoding of the atom
   '''
   #this is formatted as: [axes, [global, dictionary]]
   space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[1][0].size))
