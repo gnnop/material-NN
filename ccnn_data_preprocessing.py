@@ -45,6 +45,7 @@ def dataEncoder(row, sym):
     numbs = poscar[6].split()
 
     encoding = {}
+    keyx, keyy, keyz, val = [], [], [], []
 
     total = 0
     for i in range(len(numbs)):
@@ -60,22 +61,39 @@ def dataEncoder(row, sym):
         
         #individual atomic data here.
 
+        #Check that the atom we're interested in is inside the embedding.???
+
+        actPos, _ = givenPointDetermineCubeAndOverlap(atomToArray(unpackLine(poscar[8+i]), axes))
+
+        for p in actPos:
+            if not (-1 < p[0] < maxDims and -1 < p[1] < maxDims and -1 < p[2] < maxDims):
+                print(row)
+                print("The atom is embedded outside the voxel grid!")
+                print(p)
+                print("Throwing material out. Keep this number low")
+                return
+
         for j in completeTernary:
             #This tiles out everything. Then, I dither the pixels or whatevery
-            points, vol = givenPointDetermineCubeAndOverlap(atomToArray(np.dot(unpackLine(poscar[8+i]), axes) + np.dot(j, axes), axes))
+            points, vol = givenPointDetermineCubeAndOverlap(atomToArray(unpackLine(poscar[8+i]) + np.array(j), axes))
             for jj in range(len(points)):
-                #Additional logical check. Points need to be in the ranges specified:
-                if points[jj][0] < maxDims and points[jj][1] < maxDims and points[jj][2] < maxDims and points[jj][0] >= 0 and points[jj][1] >= 0 and points[jj][2] >= 0:
+                #Additional logical check. Points need to be in the ranges specified
+                #It's expected that some points be outside of bounds since this is the tesselated space
+                if -1 < points[jj][0] < maxDims and -1 < points[jj][1] < maxDims and -1 < points[jj][2] < maxDims and points[jj][0] >= 0 and points[jj][1] >= 0 and points[jj][2] >= 0:
                     if points[jj] not in encoding:
-                        encoding[points[jj]] = (vol[jj], *serializeAtom(atoms[atomType], poscar, i))
+                        keyx.append(points[jj][0])
+                        keyy.append(points[jj][1])
+                        keyz.append(points[jj][2])
+                        val.append([vol[jj], *serializeAtom(atoms[atomType], poscar, i)])
                     else:
                         print(row)
                         print("Enlarge the encoding! It's too small")
                         exit()
+
     
     #Add in convex points deteremining unit cell, to deteremine the ones array
     #Need to return axes for reconstruction
-    return (axes, (globalInfo, (list(encoding.keys()), list(encoding.values()))))
+    return (axes, (globalInfo, (np.array(keyx),np.array(keyy),np.array(keyz),np.array(val))))
 
 def format(read_file, write_file, sym, topo):
     with open(read_file, 'r', newline='') as file:
@@ -84,35 +102,45 @@ def format(read_file, write_file, sym, topo):
         dataset = []
         datalabels = []
 
+        nones = 0
         ii = 0
         for row in reader:
             ii = ii + 1
             print(ii)
-            dataset.append(dataEncoder(row, sym))
-            datalabels.append(convertTopoToIndex(row, topo))
+            #This method has an exceptional state. Sometimes the atomic cell is too long for it
+            #to be reasonablly included. for instance, one cell I found is 75A long.
+			
+			'''
+	        At this point we have a dataset. This dataset is formatted as follows:
+	        dataset (tuple):
+	            [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
+	            [1] inputs and outputs (tuple):
+	            [0] expected outputs (N array): the expected outputs of the network, 
+	                where N is the number of outputs determined by configuring the 
+	                symmetry group representation and class types from the command line.
+	            [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
+	                [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
+	                    where N is the number of non-zero values in the lattice 
+	                [1] values (N array of M-long tuples): the contents of each voxel, which includes
+	                    anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
+	                    the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
+	                    completely covered in this atom).
+	                    physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
+	                    one-hot encoding of the atom
 
-        '''
-        At this point we have a dataset. This dataset is formatted as follows:
-        dataset (tuple):
-            [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
-            [1] inputs and outputs (tuple):
-            [0] expected outputs (N array): the expected outputs of the network, 
-                where N is the number of outputs determined by configuring the 
-                symmetry group representation and class types from the command line.
-            [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
-                [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
-                    where N is the number of non-zero values in the lattice 
-                [1] values (N array of M-long tuples): the contents of each voxel, which includes
-                    anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
-                    the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
-                    completely covered in this atom).
-                    physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
-                    one-hot encoding of the atom
+	        This is parsed by prep_data in ccnn_ml.py
+        	'''
+			
+            data = dataEncoder(row, sym)
+            if data is not None:
+                dataset.append(dataEncoder(row, sym))
+                datalabels.append(convertTopoToIndex(row, topo))
+            else:
+                nones = nones + 1
 
-        This is parsed by prep_data in ccnn_ml.py
-        '''
         
         os.makedirs(os.path.dirname(write_file), exist_ok=True)
+        print("There are ", nones, " that don't fit")
 
         with open(write_file, 'wb') as file:
             pickle.dump((dataset, datalabels), file)
