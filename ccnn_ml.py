@@ -70,6 +70,11 @@ cube_points = np.array([[0,0,0],[1,1,1],
                         [1, 1, 0],[1, 0, 1],[0, 1, 1]])
 
 #Uses mutability  @jax.jit
+def testConvexity(index, axes, invAxes):
+  a = arrayToAtom(index, axes, invAxes)
+  return np.all(np.where(0.0 < a < 1.0, True, False)) if 1 else 0
+
+@jax.jit
 def prep_data(dicnglobal):
   '''
   Given a dictionary of global and local data, this function returns a 3D array
@@ -113,6 +118,44 @@ def prep_data(dicnglobal):
   globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
 
   space[:,:,:,-dicnglobal[1][0].size:] = globs
+  return space
+
+@jax.jit
+def prep_data_new(dicnglobal):
+  '''
+  Given a dictionary of global and local data, this function returns a 3D array
+  dicnglobal (tuple):
+    [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
+    [1] inputs and outputs (tuple):
+      [0] expected outputs (N array): the expected outputs of the network, 
+          where N is the number of outputs determined by configuring the 
+          symmetry group representation and class types from the command line.
+      [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
+        [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
+            where N is the number of non-zero values in the lattice 
+        [1] values (N array of M-long tuples): the contents of each voxel, which includes
+            anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
+            the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
+            completely covered in this atom).
+            physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
+            one-hot encoding of the atom
+  '''
+
+  #atomic representation
+  denseEncode = jnp.zeros((maxDims, maxDims, maxDims, maxRep))
+  denseEncode.at[dicnglobal[1][1][0], dicnglobal[1][1][1], dicnglobal[1][1][2], :].set(dicnglobal[1][1][3])
+
+  #mask over primitive cell
+  axes = dicnglobal[0][0]
+  invAxes = np.linalg.inv(axes)
+  mask = jnp.fromfunction(lambda i, j, k, l: testConvexity(np.array(i,j,k), axes, invAxes), 
+                   (maxDims, maxDims, maxDims, 1))
+
+  #Finally, fill in the tiled global values:
+  globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
+
+  space = np.concatenate((denseEncode, mask, globs), axis=-1)
+
   return space
 
 def prep_label():
