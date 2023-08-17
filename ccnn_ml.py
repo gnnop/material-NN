@@ -19,18 +19,18 @@ import sys, os
 sys.path.append( os.curdir )
 from ccnn_config import *
 from ccnn_shared import *
+import concurrent.futures
 
 
 def net_fn(batch):
 
   #Literally insane. This is still too large
   cnet = hk.Sequential([
-    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
-    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
-    hk.Conv3D(output_channels=60, kernel_shape=3, stride=1), jax.nn.relu,
     hk.Conv3D(output_channels=40, kernel_shape=3, stride=1), jax.nn.relu,
-    hk.Conv3D(output_channels=20, kernel_shape=3, stride=1), jax.nn.relu,
-    hk.Conv3D(output_channels=5, kernel_shape=3, stride=1), jax.nn.relu])
+    hk.Conv3D(output_channels=40, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=40, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=30, kernel_shape=3, stride=1), jax.nn.relu,
+    hk.Conv3D(output_channels=15, kernel_shape=3, stride=1), jax.nn.relu])
   
   y1 = cnet(batch)
 
@@ -53,12 +53,12 @@ def compute_loss(params, batch, label, net):
   """Computes loss and accuracy."""
   logits = net.apply(params, batch)
 
-  l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_util.tree_leaves(params))
+  #l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_util.tree_leaves(params))
   #Glitch here.
   softmax_xent = -jnp.sum(label * jax.nn.log_softmax(logits))
   softmax_xent /= label.shape[0]
 
-  loss = softmax_xent + 1e-4 * l2_loss
+  loss = softmax_xent# + 1e-4 * l2_loss
   successes = jnp.argmax(logits, axis=1) == jnp.argmax(label, axis=1)
   accuracy = jnp.average(successes)
 
@@ -74,7 +74,9 @@ def testConvexity(index, axes, invAxes):
   a = arrayToAtom(index, axes, invAxes)
   return np.all(np.where(0.0 < a < 1.0, True, False)) if 1 else 0
 
-@jax.jit
+#@jax.jit
+#Note that while there's a version of the function in the git history that I wrote that's jittable,
+#the real problem is in the highly variable distribution of sparse representation size
 def prep_data(dicnglobal):
   '''
   Given a dictionary of global and local data, this function returns a 3D array
@@ -111,51 +113,13 @@ def prep_data(dicnglobal):
   space[tuple(true_indices.T), maxRep - 2] = 1
 
   # The final step is to fill in the global values so I can use a uniform convolutional network:
-  for idx, ls in zip(dicnglobal[1][1][0], dicnglobal[1][1][1]):
-     space[idx[0], idx[1], idx[2], -maxRep:] = ls
+  for i in range(len(dicnglobal[1][1][0])):
+     space[dicnglobal[1][1][0][i], dicnglobal[1][1][1][i], dicnglobal[1][1][2][i], -maxRep:] = dicnglobal[1][1][3][i]
 
   #Finally, fill in the tiled global values:
   globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
 
   space[:,:,:,-dicnglobal[1][0].size:] = globs
-  return space
-
-@jax.jit
-def prep_data_new(dicnglobal):
-  '''
-  Given a dictionary of global and local data, this function returns a 3D array
-  dicnglobal (tuple):
-    [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
-    [1] inputs and outputs (tuple):
-      [0] expected outputs (N array): the expected outputs of the network, 
-          where N is the number of outputs determined by configuring the 
-          symmetry group representation and class types from the command line.
-      [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
-        [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
-            where N is the number of non-zero values in the lattice 
-        [1] values (N array of M-long tuples): the contents of each voxel, which includes
-            anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
-            the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
-            completely covered in this atom).
-            physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
-            one-hot encoding of the atom
-  '''
-
-  #atomic representation
-  denseEncode = jnp.zeros((maxDims, maxDims, maxDims, maxRep))
-  denseEncode.at[dicnglobal[1][1][0], dicnglobal[1][1][1], dicnglobal[1][1][2], :].set(dicnglobal[1][1][3])
-
-  #mask over primitive cell
-  axes = dicnglobal[0][0]
-  invAxes = np.linalg.inv(axes)
-  mask = jnp.fromfunction(lambda i, j, k, l: testConvexity(np.array(i,j,k), axes, invAxes), 
-                   (maxDims, maxDims, maxDims, 1))
-
-  #Finally, fill in the tiled global values:
-  globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
-
-  space = np.concatenate((denseEncode, mask, globs), axis=-1)
-
   return space
 
 def prep_label():
@@ -227,8 +191,6 @@ def main(obj):
     compute_loss_fn = jax.jit(jax.value_and_grad(
         compute_loss_fn, has_aux=True))
 
-    num_train_steps = 150000
-
 
     testObjects = objs[:(math.floor(len(labels) / 10))]
     testLabels = labels[:(math.floor(len(labels) / 10))]
@@ -244,48 +206,60 @@ def main(obj):
 
     print("point 1")
 
-    accumObject = [0]*math.floor(num / batchSize)
-    accumLabel = [0]*math.floor(num / batchSize)
+    accumChunks = [0]*math.floor(num / batchSize)
 
     for i in range(math.floor(num / batchSize)):
-      accumObject[i] = trainingObjects[batchSize * i:batchSize * (i+1)]
-      accumLabel[i] = jnp.array(trainingLabels[batchSize * i:batchSize * (i+1)])
+      accumChunks[i] = (trainingObjects[batchSize * i:batchSize * (i+1)], 
+                        jnp.array(trainingLabels[batchSize * i:batchSize * (i+1)]))
 
     print("point 2")
 
+    #The following functions are wrappers for the multiprocessing modules to play with:
+    def preprocess_chunk(data_obs):
+      return np.array(list(pool.map(prep_data, data_obs[0]))), data_obs[1]
+    
+    #must be called on single thread!!!
+    def final_process_data(data_objs, ii):
+      nonlocal opt_state
+      nonlocal params
+      nonlocal testObjects
+      nonlocal testLabels
+      (loss, acc), grad = compute_loss_fn(params, data_objs[0], data_objs[1])
+      updates, opt_state = opt_update(grad, opt_state, params)
+      params = optax.apply_updates(params, updates)
+
+      if ii % 1 == 0:
+        print(f'step: {ii}, loss: {loss}, acc: {acc}')
+      #evaluate needs the same type of speed-up to be reasonable
+      #if ii > 0 and ii % 100 == 0:
+        #evaluate(testObjects, testLabels, params)
+
     try:
-        for idy in range(num_train_steps):
-            print(idy)
+      """
+      The following is getting rearranged as a multiprocessed array. 
+      Testing takes a while so don't do it too frequently
+      It's dif
+      """
+        
+      with concurrent.futures.ThreadPoolExecutor(max_workers=20) as preprocessing_executor:
+        processed_chunks = 0
 
-            #TODO: determined manually, dedicate a thread to processing data, and another thread to feeding it to the GPU:
-            #convolutions are currently linearly expanded with each batch on the fly:
+        preprocess_future = [preprocessing_executor.submit(preprocess_chunk, chunk) for chunk in accumChunks]
 
-            start = time.time()
-            temp_objs = np.array(list(pool.map(prep_data, accumObject[idy])))
-            temp_labels = accumLabel[idy]
-            end = time.time()
-            print("Data preprocessing: " + str(end - start))
+        print("preprocessors scheduled")
 
-            #t0 = time.time()
-            (loss, acc), grad = compute_loss_fn(params, temp_objs, temp_labels)
+        #Potentially bad if the preprocessing starts outpacing the ML...
+        for future in concurrent.futures.as_completed(preprocess_future):
+          preprocessed_batch = future.result()
+          final_process_data(preprocessed_batch, processed_chunks)
+          processed_chunks += 1
 
-            updates, opt_state = opt_update(grad, opt_state, params)
-            params = optax.apply_updates(params, updates)
-            end2 = time.time()
-            print("NN application: " + str(end2 - end))
-
-            #t2 = time.time()
-            #print("time two", t2 - t0)
-            if idy % 100 == 0:
-                print(f'step: {idy}, loss: {loss}, acc: {acc}')
-            if idy % 10 == 1:
-                evaluate(testObjects, testLabels, params)
     except KeyboardInterrupt:
-        file = open('model-dump-5.params', 'wb')
-        pickle.dump(params, file)
-        file.close()
-        print("Failsafe")
-        exit()
+      file = open('model-dump-5.params', 'wb')
+      pickle.dump(params, file)
+      file.close()
+      print("Failsafe")
+      exit()
 
     evaluate(testObjects, testLabels, params)
     print('Training finished')

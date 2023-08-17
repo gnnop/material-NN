@@ -110,7 +110,7 @@ def format(read_file, write_file, sym, topo):
             #This method has an exceptional state. Sometimes the atomic cell is too long for it
             #to be reasonablly included. for instance, one cell I found is 75A long.
 			
-			'''
+            '''
 	        At this point we have a dataset. This dataset is formatted as follows:
 	        dataset (tuple):
 	            [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
@@ -129,7 +129,7 @@ def format(read_file, write_file, sym, topo):
 	                    one-hot encoding of the atom
 
 	        This is parsed by prep_data in ccnn_ml.py
-        	'''
+            '''
 			
             data = dataEncoder(row, sym)
             if data is not None:
