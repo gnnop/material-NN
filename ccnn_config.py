@@ -5,14 +5,14 @@ import numpy as np
 The input vector is a 3D lattice of size maxDims x maxDims x maxDims of
 atoms, represented as vectors of size maxRep.
 '''
-maxDims = 28
+maxDims = 44
 
 '''
 It is assumed that all atoms have the same size.
 This is the relative radius of each atom in lattice units.
 Always scale the maxDims with the conversionFactor
 '''
-conversionFactor = 1.5
+conversionFactor = 1.35
 
 
 '''
