@@ -1,0 +1,1 @@
+voxel_grid_size = 60
