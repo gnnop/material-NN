@@ -19,8 +19,9 @@ In the Conda environment,
 
 Unzip `tqc-filtered.7z` and make sure the extracted file (`tqc-filtered.csv`) is in the root folder of this repo.
 
-Now with any of the four neural network types:
+Now with any of the five neural network types:
 * ccnn: crystal convolutional neural network
+* ccnn2: another crystal convolutional neural network
 * cgnn: crystal graph neural network
 * csnn: crystal set neural network
 * naive: multilayer perceptron
