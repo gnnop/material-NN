@@ -1,3 +1,4 @@
+from _common_data_preprocessing import *
 from _common_ml import *
 import functools
 import jax
@@ -13,7 +14,7 @@ import time
 from multiprocessing.dummy import Pool as ThreadPool
 import jax.numpy as jnp
 import haiku as hk
-import trimesh
+import itertools
 import time
 import sys, os
 sys.path.append( os.curdir )
@@ -21,6 +22,13 @@ from ccnn_config import *
 from ccnn_shared import *
 import concurrent.futures
 
+def givenPointDetermineCubeAndOverlap(position):
+    index = np.round(position).astype(int)
+    comp = lambda i, p : -1 if p < i else 1
+    indices = list(itertools.product(*[[0, comp(index[i], position[i])] for i in range(3)]))
+    points = [tuple(index + np.array(indices[i])) for i in range(8)]
+    shared_vol = [np.prod( 1 - np.abs(position - i)) for i in points]
+    return (points, shared_vol)
 
 def net_fn(batch):
 
@@ -71,59 +79,71 @@ cube_points = np.array([[0,0,0],[1,1,1],
 
 #Uses mutability  @jax.jit
 def testConvexity(index, axes, invAxes):
-  a = arrayToAtom(index, axes, invAxes)
-  return np.all(np.where(0.0 < a < 1.0, True, False)) if 1 else 0
+  a = np.apply_along_axis(lambda r: arrayToAtom(r, axes, invAxes), 0, index)
+  b = (0.0 < a) & (a < 1.0)
+  c = np.all(b, axis=0)
+  return c if 1 else 0
 
-#@jax.jit
-#Note that while there's a version of the function in the git history that I wrote that's jittable,
-#the real problem is in the highly variable distribution of sparse representation size
-def prep_data(dicnglobal):
-  '''
-  Given a dictionary of global and local data, this function returns a 3D array
-  dicnglobal (tuple):
-    [0] axes (3x3 array): the three axes of the local coordinate system in global coordinates
-    [1] inputs and outputs (tuple):
-      [0] expected outputs (N array): the expected outputs of the network, 
-          where N is the number of outputs determined by configuring the 
-          symmetry group representation and class types from the command line.
-      [1] inputs (tuple): a sparse representation of the voxel lattice representation of the lattice.
-        [0] indices (N array of 3-long tuples): the list of indices of non-zero values in the lattice, 
-            where N is the number of non-zero values in the lattice 
-        [1] values (N array of M-long tuples): the contents of each voxel, which includes
-            anti-aliasing: the amount of atom-ness at this voxel, or the volume of the atom if we assume
-            the atom is a cube. This is a float between 0 (the atom is not in this voxel) and 1 (the voxel is
-            completely covered in this atom).
-            physical coordinates of the atom, specified by the axis vectors dicnglobal[0]
-            one-hot encoding of the atom
-  '''
-  #this is formatted as: [axes, [global, dictionary]]
-  space = np.zeros((maxDims, maxDims, maxDims, maxRep + dicnglobal[1][0].size))
+
+def prep_data(row):
+  #atoms
+  denseEncode = np.zeros((maxDims, maxDims, maxDims, maxRep))
   
-  #We get the global points by putting in the corners of a box
-  convexPoints = np.array([atomToArray(i, dicnglobal[0]) for i in cube_points])
+  #atomic representation
+  poscar = list(map(lambda a: a.strip(), row[0].split("\\n")))
+  #this line is non-deterministic and you can tell that things will go south.
+  #axes = randomRotateBasis(getGlobalDataVector(poscar))
+  axes = getGlobalDataVector(poscar)
 
-  indices = np.transpose(np.indices((maxDims, maxDims, maxDims)).reshape(3, -1))
+  atoms = poscar[5].split()
+  numbs = poscar[6].split()
+
+  total = 0
+  for i in range(len(numbs)):
+    total+=int(numbs[i])
+    numbs[i] = total
   
-  coords = trimesh.points.PointCloud(convexPoints).convex_hull.contains(indices)
+  curIndx = 0
+  atomType = 0
+  for i in range(total):
+    curIndx+=1
+    if curIndx > numbs[atomType]:
+      atomType+=1
+
+    for j in completeTernary:
+      #This tiles out everything. Then, I dither the pixels or whatevery
+      points, vol = givenPointDetermineCubeAndOverlap(atomToArray(unpackLine(poscar[8+i]) + np.array(j), axes))
+      for jj in range(len(points)):
+        #Additional logical check. Points need to be in the ranges specified
+        #It's expected that some points be outside of bounds since this is the tesselated space
+        if -1 < points[jj][0] < maxDims and -1 < points[jj][1] < maxDims and -1 < points[jj][2] < maxDims and points[jj][0] >= 0 and points[jj][1] >= 0 and points[jj][2] >= 0:
+          denseEncode[points[jj][0],points[jj][1],points[jj][2], :] = [vol[jj], *serializeAtom(atoms[atomType], poscar, i)]
   
-  # Convert coords to indices using numpy.where
-  true_indices = indices[coords]
-
-  # Assign 1 to space at the true_indices
-  space[tuple(true_indices.T), maxRep - 2] = 1
-
-  # The final step is to fill in the global values so I can use a uniform convolutional network:
-  for i in range(len(dicnglobal[1][1][0])):
-     space[dicnglobal[1][1][0][i], dicnglobal[1][1][1][i], dicnglobal[1][1][2][i], -maxRep:] = dicnglobal[1][1][3][i]
+  #mask over primitive cell
+  invAxes = np.linalg.inv(axes)
+  mask = np.fromfunction(lambda i, j, k, l: testConvexity(np.array((i,j,k)), axes, invAxes), 
+                   (maxDims, maxDims, maxDims, 1))
 
   #Finally, fill in the tiled global values:
-  globs = np.tile(dicnglobal[1][0], ((maxDims, maxDims, maxDims, 1)))
+  #get symm back. I'm trying to make this similar to the other ML programs.
+  #However, because I'm now expanding things on the fly, I need to use the symmetry and this is the least invasive
+  #way to do that:
+  if globals["dataSize"] == 14:
+    sym = "f"
+  elif globals["dataSize"] == 38:
+    sym = "c"
+  else:
+    sym = ""
+  
+  globs = np.tile(np.array(getGlobalData(poscar, row, sym)), ((maxDims, maxDims, maxDims, 1)))
 
-  space[:,:,:,-dicnglobal[1][0].size:] = globs
+  space = np.concatenate((denseEncode, mask, globs), axis=-1)
+
   return space
 
-def prep_label():
-  return 0
+def prep_label(lab):
+  #This is already parsed by preprocessing
+  return lab
 
 #@jax.jit
 def evaluate(dataset: List[Any],
