@@ -10,6 +10,9 @@ sys.path.append( os.curdir )
 from ccnn_config import *
 from ccnn_shared import *
 
+#It's still necessary to filter out bad cases, and I'm pulling that out of the main loop.
+USE_AS_AUXILIARY_TO_DIRECT_EXPANSION = True
+
 #Work on minifying data
 #The atom is modeled as a width one box. The points are modelled as width 1 boxes centered at the thing.
 #We determine rough inclusion based on overlap
@@ -133,8 +136,12 @@ def format(read_file, write_file, sym, topo):
 			
             data = dataEncoder(row, sym)
             if data is not None:
-                dataset.append(dataEncoder(row, sym))
-                datalabels.append(convertTopoToIndex(row, topo))
+                if USE_AS_AUXILIARY_TO_DIRECT_EXPANSION:
+                    dataset.append(row)
+                    datalabels.append(convertTopoToIndex(row, topo))
+                else:
+                    dataset.append(data)#That was stupid. I was recomputing, instead of putting data directly in
+                    datalabels.append(convertTopoToIndex(row, topo))
             else:
                 nones = nones + 1
 

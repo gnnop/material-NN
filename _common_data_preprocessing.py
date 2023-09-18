@@ -406,14 +406,6 @@ def convertTopoToIndex(rows, topo):
     return arr
 
 maxSize = 60
-
-'''
-The number of elements to specify the position of the atom on the periodic table and its coordinates in the unit cell.
-row: 7
-column: 16
-spin: 1
-coordinates: 3
-'''
 atomSize = 27
 
 
