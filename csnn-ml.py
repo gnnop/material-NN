@@ -8,18 +8,21 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+# we have l | l l l so the sizes are the same
+def skipit(width, layers):
+  first = hk.Sequential([hk.Linear(width), jax.nn.relu])
+
+  rest = hk.Sequential([
+    *[a for i in range(layers - 1) for a in (hk.Linear(width), jax.nn.leaky_relu)]
+  ])
+  return lambda a : first(a) + rest(a)
+
 def net_fn(batch: np.ndarray) -> jnp.ndarray:
   global globals
   """Standard LeNet-300-100 MLP network."""
 
   # Define the neural network to apply to the concatenated vectors
-  plp = hk.Sequential([
-    hk.Linear(40), jax.nn.relu,
-    hk.Linear(40), jax.nn.relu,
-    hk.Linear(60), jax.nn.relu,
-    hk.Linear(80), jax.nn.relu,
-    hk.Linear(80), jax.nn.relu,
-  ])
+  plp = hk.Sequential([skipit(40, 3) , skipit(60,3)])
 
   global_elements = batch[:, :globals["dataSize"]]
   reshaped_x = jnp.reshape(batch[:, globals["dataSize"]:], (batch.shape[0], 60, 27))
@@ -33,18 +36,8 @@ def net_fn(batch: np.ndarray) -> jnp.ndarray:
 
   final_feedthrough = jnp.concatenate([global_elements, combined_result], axis=-1)
 
-  mlp = hk.Sequential([
-      hk.Flatten(),
-      hk.Linear(500), jax.nn.relu,
-      hk.Linear(500), jax.nn.relu,
-      hk.Linear(400), jax.nn.relu,
-      hk.Linear(300), jax.nn.relu,
-      hk.Linear(200), jax.nn.relu,
-      hk.Linear(100), jax.nn.relu,
-      hk.Linear(50), jax.nn.relu,
-      hk.Linear(20), jax.nn.relu,
-      hk.Linear(globals["labelSize"])
-  ])
+  mlp = hk.Sequential([skipit(600, 3), skipit(300, 3), skipit(50, 3), 
+                       hk.Linear(10), jax.nn.relu, hk.Linear(globals["labelSize"])])
 
   return mlp(final_feedthrough)
 
