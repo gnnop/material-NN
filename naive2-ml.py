@@ -36,21 +36,47 @@ def net_fn(batch, is_training=True):
         hk.Linear(5)  # Assuming a 10-class classification problem
     ])
     return mlp(batch)
+# end of net_fn
 
 # Transform the function into a form that Haiku can work with
 net = hk.transform(net_fn)
 
 
+# Function to partition the dataset into training and validation sets
+def partition_dataset(data, labels, validation_percentage):
+    # Calculate the number of validation samples
+    num_data = data.shape[0]
+    num_val_samples = int(num_data * validation_percentage)
+
+    # Generate shuffled indices
+    indices = jnp.arange(num_data)
+    shuffled_indices = jax.random.permutation(jax.random.PRNGKey(0), indices)
+
+    # Split the data and labels into training and validation sets
+    val_indices = shuffled_indices[:num_val_samples]
+    train_indices = shuffled_indices[num_val_samples:]
+
+    X_train, y_train = data[train_indices], labels[train_indices]
+    X_val, y_val = data[val_indices], labels[val_indices]
+
+    return X_train, y_train, X_val, y_val
+# end of partition_dataset
 
 def train(obj):
 
     prettyPrint(obj)
 
-    # Loss function
+    # Loss function for training
     def loss_fn(params, rng, inputs, targets):
         predictions = net.apply(params, rng, inputs, is_training=True)
         loss = jnp.mean(optax.softmax_cross_entropy(logits=predictions, labels=targets))
         return loss
+    
+    # Accuracy function for us to evaluate the model
+    def accuracy_fn(params, rng, inputs, targets):
+        predictions = net.apply(params, rng, inputs, is_training=False)
+        accuracy = jnp.mean(jnp.argmax(predictions, axis=-1) == jnp.argmax(targets, axis=-1))
+        return accuracy
 
     # Update function
     @jax.jit
@@ -64,6 +90,9 @@ def train(obj):
     # Replace these with actual data loading code
     X_train = jnp.array(obj['data'])
     y_train = jnp.array(obj['labels'])
+
+    # Partition the dataset into training and validation
+    X_train, y_train, X_val, y_val = partition_dataset(X_train, y_train, 0.1)
 
     prettyPrint(X_train)
     print(X_train.shape)
@@ -93,7 +122,7 @@ def train(obj):
     optimizer = optax.adam(learning_rate=lr_schedule)
     opt_state = optimizer.init(params)
 
-
+    # Training loop
     for epoch in range(num_epochs):
         for i in range(num_batches):
             batch_rng = random.fold_in(train_rng, i)
@@ -102,10 +131,15 @@ def train(obj):
             y_batch = y_train[batch_start:batch_end]
             params, opt_state = update(params, opt_state, batch_rng, X_batch, y_batch)
 
-        # Quick loss check
-        if epoch % 1 == 0:
-            epoch_loss = loss_fn(params, batch_rng, X_train, y_train)
-            print(f"Epoch {epoch}, Loss: {epoch_loss}")
+        # Save the training and validation loss
+        train_loss = loss_fn(params, batch_rng, X_train, y_train)
+        val_loss = loss_fn(params, batch_rng, X_val, y_val)
+        train_accuracy = accuracy_fn(params, batch_rng, X_train, y_train)
+        val_accuracy = accuracy_fn(params, batch_rng, X_val, y_val)
+        print(f"Epoch {epoch}, Training loss: {train_loss}, Validation loss: {val_loss}, Training accuracy: {train_accuracy}, Validation accuracy: {val_accuracy}")
+    # end of for epoch
+        
+    # TODO save the model
 
 
 if __name__ == "__main__":
