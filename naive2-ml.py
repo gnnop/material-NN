@@ -9,14 +9,13 @@ from prettyprint import prettyPrint
 
 # hyperparameters
 hp = {
-    "initialDropoutRate": 0.0,
-    "zeroDropoutAfterEpoch": 20
+    "dropoutRate": 0.1
 }
 
 
 
 # Define the neural network with dropout
-def net_fn(batch, is_training=True, dropout_rate=0):
+def net_fn(batch, is_training=False, dropout_rate=0):
     mlp = hk.Sequential([
         # fully connected layer with dropout
         hk.Linear(3000), jax.nn.relu,
@@ -70,9 +69,7 @@ def train(obj):
 
     # Loss function for training
     def loss_fn(params, rng, inputs, targets):
-        dropoutRate = max(hp["initialDropoutRate"] - epoch/hp["zeroDropoutAfterEpoch"], 0)
-        isTraining = dropoutRate > 0
-        predictions = net.apply(params, rng, inputs, is_training=isTraining, dropout_rate=dropoutRate)
+        predictions = net.apply(params, rng, inputs, is_training=True, dropout_rate=hp['dropoutRate'])
         loss = jnp.sum(optax.softmax_cross_entropy(logits=predictions, labels=targets))
         return loss
     
@@ -119,14 +116,14 @@ def train(obj):
     num_batches = X_train.shape[0] // batch_size
 
     # Learning rate schedule: linear ramp-up and then constant
-    ramp_up_epochs = 100  # Number of epochs to linearly ramp up the learning rate
+    ramp_up_epochs = 500  # Number of epochs to linearly ramp up the learning rate
     total_ramp_up_steps = ramp_up_epochs * num_batches
     lr_schedule = optax.linear_schedule(init_value=1e-6, 
                                         end_value =1e-4, 
                                         transition_steps=total_ramp_up_steps)
 
     # Optimizer
-    optimizer = optax.adabelief(learning_rate=lr_schedule)
+    optimizer = optax.noisy_sgd(learning_rate=lr_schedule)
     opt_state = optimizer.init(params)
 
     # Training loop
