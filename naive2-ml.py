@@ -9,31 +9,33 @@ from prettyprint import prettyPrint
 
 # hyperparameters
 hp = {
-    "dropoutRate": 0.2
+    "initialDropoutRate": 0.0,
+    "zeroDropoutAfterEpoch": 20
 }
 
 
 
 # Define the neural network with dropout
-def net_fn(batch, is_training=True):
+def net_fn(batch, is_training=True, dropout_rate=0):
     mlp = hk.Sequential([
-        hk.Linear(1891), jax.nn.relu,
+        # fully connected layer with dropout
+        hk.Linear(3000), jax.nn.relu,
         # Apply dropout only during training, with corrected argument order
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=hp["dropoutRate"]) if is_training else x, 
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
 
         # fully connected layer with dropout
-        hk.Linear(1891), jax.nn.relu,
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=hp["dropoutRate"]) if is_training else x,       
+        hk.Linear(2000), jax.nn.relu,
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,       
 
         # fully connected layer with dropout
-        hk.Linear(1891), jax.nn.relu,
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=hp["dropoutRate"]) if is_training else x,  
-
-        # fully connected layer with dropout
-        hk.Linear(100), jax.nn.relu,
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=hp["dropoutRate"]) if is_training else x,         
+        hk.Linear(1000), jax.nn.relu,
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,  
         
-        hk.Linear(5)  # Assuming a 10-class classification problem
+        # fully connected layer
+        hk.Linear(100), jax.nn.relu,
+        # lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
+        
+        hk.Linear(5)  # Assuming full set of categories
     ])
     return mlp(batch)
 # end of net_fn
@@ -68,8 +70,10 @@ def train(obj):
 
     # Loss function for training
     def loss_fn(params, rng, inputs, targets):
-        predictions = net.apply(params, rng, inputs, is_training=True)
-        loss = jnp.mean(optax.softmax_cross_entropy(logits=predictions, labels=targets))
+        dropoutRate = max(hp["initialDropoutRate"] - epoch/hp["zeroDropoutAfterEpoch"], 0)
+        isTraining = dropoutRate > 0
+        predictions = net.apply(params, rng, inputs, is_training=isTraining, dropout_rate=dropoutRate)
+        loss = jnp.sum(optax.softmax_cross_entropy(logits=predictions, labels=targets))
         return loss
     
     # Accuracy function for us to evaluate the model
@@ -87,39 +91,42 @@ def train(obj):
         return new_params, opt_state
 
     # Placeholder for your data
-    # Replace these with actual data loading code
     X_train = jnp.array(obj['data'])
     y_train = jnp.array(obj['labels'])
+    print(f"X_train original shape: {X_train.shape}")
+    print(f"y_train original shape: {y_train.shape}")
 
     # Partition the dataset into training and validation
     X_train, y_train, X_val, y_val = partition_dataset(X_train, y_train, 0.1)
 
-    prettyPrint(X_train)
-    print(X_train.shape)
-    prettyPrint(y_train)
-    print(y_train.shape)
+    print("After partitioning:")
+    print(f"X_train shape: {X_train.shape}")
+    print(f"y_train shape: {y_train.shape}")
+    print(f"X_val shape: {X_val.shape}")
+    print(f"y_val shape: {y_val.shape}")
+    print(f"{X_val.shape[0]/(X_train.shape[0] + X_val.shape[0]) * 100}% of the data is used for validation")
 
 
-    batch_size = X_train.shape[0]
+    batch_size = X_train.shape[0] // 64
 
     # Initialize the model
-    rng = random.PRNGKey(42)
+    rng = random.PRNGKey(0x09F911029D74E35BD84156C5635688C0 % 2**32)
     init_rng, train_rng = jax.random.split(rng)
     params = net.init(init_rng, X_train[:batch_size], is_training=True)
 
     # Training loop
-    num_epochs = 3600*2*8
+    num_epochs = 1000
     num_batches = X_train.shape[0] // batch_size
 
     # Learning rate schedule: linear ramp-up and then constant
-    ramp_up_epochs = 3600*2*4  # Number of epochs to linearly ramp up the learning rate
+    ramp_up_epochs = 100  # Number of epochs to linearly ramp up the learning rate
     total_ramp_up_steps = ramp_up_epochs * num_batches
     lr_schedule = optax.linear_schedule(init_value=1e-6, 
                                         end_value =1e-4, 
                                         transition_steps=total_ramp_up_steps)
 
     # Optimizer
-    optimizer = optax.adam(learning_rate=lr_schedule)
+    optimizer = optax.adabelief(learning_rate=lr_schedule)
     opt_state = optimizer.init(params)
 
     # Training loop
