@@ -132,6 +132,10 @@ Atoms (667 + 347 + 187 + 187 + 187 + 187 = 1662)
         10 atoms
     Atom Set 6 (27 + 16*10 = 187)
         10 atoms
+Space group (one-hot encoded) (230)
+Is 1D? (1)
+Is 2D? (1)
+Is 3D? (1)
 
 
 
@@ -406,8 +410,18 @@ def format(rFile, wFile, sym, topo):
                 
                 # Done with this atom type
                 outputAtoms.append(outputAtomType)
+
+            # Space group
+            outputSpaceGroup = [0]*231
+            outputSpaceGroup[int(row[2])] = 1
+
+            # Is 1D? Is 2D? Is 3D?
+            outputIs1D = [0] if 'Point' in row[6] else [1]
+            outputIs2D = [0] if 'Line'  in row[6] else [1]
+            outputIs3D = [0] if 'None'  in row[6] else [1]
+            
             # Done with all atom types
-            processedAtom = [outputGlobalAxisCoordinates, outputAtoms]
+            processedAtom = [outputGlobalAxisCoordinates, outputAtoms, outputSpaceGroup, outputIs1D, outputIs2D, outputIs3D]
             # Completely flatten the processedAtom list
             processedAtom = list(flatten(processedAtom))
 
