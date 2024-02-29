@@ -51,7 +51,7 @@ def partition_dataset(data, labels, validation_percentage):
 
     # Generate shuffled indices
     indices = jnp.arange(num_data)
-    shuffled_indices = jax.random.permutation(jax.random.PRNGKey(0), indices)
+    shuffled_indices = jax.random.permutation(jax.random.PRNGKey(314), indices)
 
     # Split the data and labels into training and validation sets
     val_indices = shuffled_indices[:num_val_samples]
@@ -116,10 +116,10 @@ def train(obj):
     num_batches = X_train.shape[0] // batch_size
 
     # Learning rate schedule: linear ramp-up and then constant
-    ramp_up_epochs = 500  # Number of epochs to linearly ramp up the learning rate
+    ramp_up_epochs = 50  # Number of epochs to linearly ramp up the learning rate
     total_ramp_up_steps = ramp_up_epochs * num_batches
-    lr_schedule = optax.linear_schedule(init_value=1e-6, 
-                                        end_value =1e-4, 
+    lr_schedule = optax.linear_schedule(init_value=1e-5, 
+                                        end_value =1e-3, 
                                         transition_steps=total_ramp_up_steps)
 
     # Optimizer
