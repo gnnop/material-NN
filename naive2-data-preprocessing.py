@@ -97,10 +97,10 @@ Direct
 
 
 The data structure for training/inference is:
-Global axis coordinates (30)
-    x (10)
-    y (10)
-    z (10)
+Global axis coordinates (90)
+    x (30)
+    y (30)
+    z (30)
 Atoms (667 + 347 + 187 + 187 + 187 + 187 = 1662)
     Atom Set 1 (27 + 16*40 = 667)
         Type    (27)
