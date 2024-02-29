@@ -1,146 +1,162 @@
-from typing import Tuple
-from _common_ml import *
-import haiku as hk
 import jax
 import jax.numpy as jnp
-import numpy as np
+import haiku as hk
 import optax
+from jax import random
+from _common_ml import *
+from prettyprint import prettyPrint
 
-def net_fn(batch: np.ndarray) -> jnp.ndarray:
-  global globals
-  """Standard LeNet-300-100 MLP network."""
-  x = batch.astype(jnp.float32)
 
-  a1 = hk.Sequential([
-    hk.Flatten(),
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-  ])
+# hyperparameters
+hp = {
+    "dropoutRate": 0.1
+}
 
-  a2 = hk.Sequential([
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-    hk.Linear(500), jax.nn.relu,
-  ])
 
-  #No softmax required, because it's order preserving, and we only need the 
-  #cross-entropy for training
-  a3 = hk.Sequential([
-    hk.Linear(400), jax.nn.relu,
-    hk.Linear(300), jax.nn.relu,
-    hk.Linear(200), jax.nn.relu,
-    hk.Linear(100), jax.nn.relu,
-    hk.Linear(50), jax.nn.relu,
-    hk.Linear(20), jax.nn.relu,
-    hk.Linear(globals["labelSize"])
-  ])
 
-  y1 = a1(x)
-  y2 = y1 + a2(y1)
-  y3 = a3(y2)
+# Define the neural network with dropout
+def net_fn(batch, is_training=False, dropout_rate=0):
+    mlp = hk.Sequential([
+        # fully connected layer with dropout
+        hk.Linear(3000), jax.nn.relu,
+        # Apply dropout only during training, with corrected argument order
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
 
-  return y3
+        # fully connected layer with dropout
+        hk.Linear(2000), jax.nn.relu,
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,       
 
-#maybe a better way to shuffle data exists, but... ?
-#Also, could try vmapping
-def mixAtoms(listOfData):
-  '''
-  global globals
-  permList = list(range(globals["dataSize"] + 27*60))
+        # fully connected layer with dropout
+        hk.Linear(1000), jax.nn.relu,
+        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,  
+        
+        # fully connected layer
+        hk.Linear(100), jax.nn.relu,
+        # lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
+        
+        hk.Linear(5)  # Assuming full set of categories
+    ])
+    return mlp(batch)
+# end of net_fn
 
-  copyOfData = listOfData
-  for i in range(len(listOfData)):
-    perm = np.random.permutation(60)
-    permList[globals["dataSize"]:] = [globals["dataSize"] + j + perm[i]*27 for j in range(27) for i in range(60)]
-    copyOfData[i] = listOfData[i, permList]
-  return copyOfData
-  '''
-  return listOfData
+# Transform the function into a form that Haiku can work with
+net = hk.transform(net_fn)
 
-def main(obj):
-  # Make the network and optimiser.
-  net = hk.without_apply_rng(hk.transform(net_fn))
-  opt = optax.adam(1e-3)
 
-  # Training loss (cross-entropy).
-  def loss(params: hk.Params, batch: np.ndarray, labels: np.ndarray) -> jnp.ndarray:
-    global globals
-    """Compute the loss of the network, including L2."""
-    logits = net.apply(params, batch)
-    #The labels are prehotted
+# Function to partition the dataset into training and validation sets
+def partition_dataset(data, labels, validation_percentage):
+    # Calculate the number of validation samples
+    num_data = data.shape[0]
+    num_val_samples = int(num_data * validation_percentage)
 
-    l2_loss = 0.5 * sum(jnp.sum(jnp.square(p)) for p in jax.tree_leaves(params))
-    softmax_xent = -jnp.sum(labels * jax.nn.log_softmax(logits))
-    softmax_xent /= labels.shape[0]
+    # Generate shuffled indices
+    indices = jnp.arange(num_data)
+    shuffled_indices = jax.random.permutation(jax.random.PRNGKey(314), indices)
 
-    return softmax_xent + 1e-4 * l2_loss
+    # Split the data and labels into training and validation sets
+    val_indices = shuffled_indices[:num_val_samples]
+    train_indices = shuffled_indices[num_val_samples:]
 
-  # Evaluation metric (classification accuracy).
-  @jax.jit
-  def accuracy(params: hk.Params, batch: np.ndarray, labels: np.ndarray) -> jnp.ndarray:
-    global globals
-    predictions = net.apply(params, batch)
-    hot_pred = jax.lax.map(
-      lambda a: jax.lax.eq(jnp.arange(globals["labelSize"]), jnp.argmax(a)).astype(float),
-      predictions)
-    return jnp.mean(jnp.equal(hot_pred, labels).all(axis=1))
+    X_train, y_train = data[train_indices], labels[train_indices]
+    X_val, y_val = data[val_indices], labels[val_indices]
 
-  @jax.jit
-  def update(
-      params: hk.Params,
-      opt_state: optax.OptState,
-      batch: np.ndarray,
-      labels: np.ndarray,
-  ) -> Tuple[hk.Params, optax.OptState]:
-    """Learning rule (stochastic gradient descent)."""
-    grads = jax.grad(loss)(params, batch, labels)
-    updates, opt_state = opt.update(grads, opt_state)
-    new_params = optax.apply_updates(params, updates)
-    return new_params, opt_state
+    return X_train, y_train, X_val, y_val
+# end of partition_dataset
 
-  # We maintain avg_params, the exponential moving average of the "live" params.
-  # avg_params is used only for evaluation (cf. https://doi.org/10.1137/0330046)
-  @jax.jit
-  def ema_update(params, avg_params):
-    return optax.incremental_update(params, avg_params, step_size=0.001)
+def train(obj):
 
-  # Make datasets.
-  iterData = list(np.array_split(np.array(obj), 1000))
+    prettyPrint(obj)
 
-  # Initialize network and optimiser; note we draw an input to get shapes.
-  print(iterData[0][:,:-globals["labelSize"]].shape)
-  params = avg_params = net.init(jax.random.PRNGKey(42), iterData[0][:,:-globals["labelSize"]])
-  opt_state = opt.init(params)
-
-  ii = 1
-  # Train/eval loop.
-  for step in range(100001):
-    ii+=1
-    if ii == len(iterData):
-      ii = 1
+    # Loss function for training
+    def loss_fn(params, rng, inputs, targets):
+        predictions = net.apply(params, rng, inputs, is_training=True, dropout_rate=hp['dropoutRate'])
+        loss = jnp.sum(optax.softmax_cross_entropy(logits=predictions, labels=targets))
+        return loss
     
-    if step % 100 == 0:
-      # Periodically evaluate classification accuracy on train & test sets.
-      train_accuracy = accuracy(avg_params, 
-                                mixAtoms(iterData[ii][:,:-globals["labelSize"]]),
-                                          iterData[ii][:, -globals["labelSize"]:])
-      test_accuracy = accuracy(avg_params,
-                                mixAtoms(iterData[0][:,:-globals["labelSize"]]),
-                                         iterData[0][:, -globals["labelSize"]:])
-      train_accuracy, test_accuracy = jax.device_get(
-          (train_accuracy, test_accuracy))
-      print(f"[Step {step}] Train / Test accuracy: "
-            f"{train_accuracy:.3f} / {test_accuracy:.3f}.")
+    # Accuracy function for us to evaluate the model
+    def accuracy_fn(params, rng, inputs, targets):
+        predictions = net.apply(params, rng, inputs, is_training=False)
+        accuracy = jnp.mean(jnp.argmax(predictions, axis=-1) == jnp.argmax(targets, axis=-1))
+        return accuracy
 
-    
-    # Do SGD on a batch of training examples.
-    params, opt_state = update(params, opt_state, 
-                               mixAtoms(iterData[ii][:,:-globals["labelSize"]]), 
-                                         iterData[ii][:, -globals["labelSize"]:])
-    avg_params = ema_update(params, avg_params)
+    # Update function
+    @jax.jit
+    def update(params, opt_state, rng, inputs, targets):
+        grads = jax.grad(loss_fn)(params, rng, inputs, targets)
+        updates, opt_state = optimizer.update(grads, opt_state)
+        new_params = optax.apply_updates(params, updates)
+        return new_params, opt_state
+
+    # Placeholder for your data
+    X_train = jnp.array(obj['data'])
+    y_train = jnp.array(obj['labels'])
+    print(f"X_train original shape: {X_train.shape}")
+    print(f"y_train original shape: {y_train.shape}")
+
+    # Partition the dataset into training and validation
+    X_train, y_train, X_val, y_val = partition_dataset(X_train, y_train, 0.1)
+
+    print("After partitioning:")
+    print(f"X_train shape: {X_train.shape}")
+    print(f"y_train shape: {y_train.shape}")
+    print(f"X_val shape: {X_val.shape}")
+    print(f"y_val shape: {y_val.shape}")
+    print(f"{X_val.shape[0]/(X_train.shape[0] + X_val.shape[0]) * 100}% of the data is used for validation")
 
 
-cmd_line(main, "naive")
+    batch_size = X_train.shape[0] // 64
+
+    # Initialize the model
+    rng = random.PRNGKey(0x09F911029D74E35BD84156C5635688C0 % 2**32)
+    init_rng, train_rng = jax.random.split(rng)
+    params = net.init(init_rng, X_train[:batch_size], is_training=True)
+
+    # Training loop
+    num_epochs = 1000
+    num_batches = X_train.shape[0] // batch_size
+
+    # Learning rate schedule: linear ramp-up and then constant
+    ramp_up_epochs = 50  # Number of epochs to linearly ramp up the learning rate
+    total_ramp_up_steps = ramp_up_epochs * num_batches
+    lr_schedule = optax.linear_schedule(init_value=1e-5, 
+                                        end_value =1e-3, 
+                                        transition_steps=total_ramp_up_steps)
+
+    # Optimizer
+    optimizer = optax.noisy_sgd(learning_rate=lr_schedule)
+    opt_state = optimizer.init(params)
+
+    # Training loop
+    for epoch in range(num_epochs):
+        for i in range(num_batches):
+            batch_rng = random.fold_in(train_rng, i)
+            batch_start, batch_end = i * batch_size, (i + 1) * batch_size
+            X_batch = X_train[batch_start:batch_end]
+            y_batch = y_train[batch_start:batch_end]
+            params, opt_state = update(params, opt_state, batch_rng, X_batch, y_batch)
+
+        # Save the training and validation loss
+        train_loss = loss_fn(params, batch_rng, X_train, y_train)
+        val_loss = loss_fn(params, batch_rng, X_val, y_val)
+        train_accuracy = accuracy_fn(params, batch_rng, X_train, y_train)
+        val_accuracy = accuracy_fn(params, batch_rng, X_val, y_val)
+        print(f"Epoch {epoch}, Training loss: {train_loss}, Validation loss: {val_loss}, Training accuracy: {train_accuracy}, Validation accuracy: {val_accuracy}")
+    # end of for epoch
+        
+    # TODO save the model
+
+
+if __name__ == "__main__":
+    cmd_line(train, "naive")
+
+
+'''
+    # Inference
+    # Placeholder for new data
+    X_new = jnp.zeros((10, 784))  # Example new data
+
+    # Run inference (set is_training=False to disable dropout)
+    predictions = net.apply(params, train_rng, X_new, is_training=False)
+    probabilities = jax.nn.softmax(predictions)
+    print("Inference probabilities:", probabilities)
+'''
