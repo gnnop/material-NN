@@ -415,6 +415,19 @@ def unpackLine(str):
 
 
 def getGlobalData(poscar, row, spec_str):
+    '''
+    Given the following parameters:
+    poscar: the poscar to extract data from
+    row: the row to extract data from
+    spec_str: the type of symmetries to classify by (f or c or n)
+
+    Returns a list of the following format:
+    [a, b, c, alpha, beta, gamma, ...]
+    where a, b, c are the lengths of the axes, and alpha, beta, gamma are the angles between the axes
+    and the rest of the list is the classification of the space group
+
+    TODO AI generated, likely to be wrong
+    '''
     a = np.array(unpackLine(poscar[2]))
     b = np.array(unpackLine(poscar[3]))
     c = np.array(unpackLine(poscar[4]))
