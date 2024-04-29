@@ -9,15 +9,12 @@ def prettyPrint(data, indent=0, indent_step=2, color_index=0, only_show_amount=2
     optionally abridging long lists by showing only a specified number of elements from the start and end.
     """
     colors = ['yellow', 'red', 'blue', 'green', 'magenta', 'cyan', 'white']
-
     def abridge_sequence(sequence, only_show_amount):
         if only_show_amount < 1 or len(sequence) <= only_show_amount * 2:
             return sequence
         return sequence[:only_show_amount] + ['...'] + sequence[-only_show_amount:]
-
     def print_item(item, indent, color_index, is_last_item=False):
         current_color = colors[color_index % len(colors)]
-
         if isinstance(item, (list, tuple, set)):
             item_repr = list(item) if not isinstance(item, list) else item
             if only_show_amount > -1 and len(item_repr) > only_show_amount * 2:
@@ -46,7 +43,6 @@ def prettyPrint(data, indent=0, indent_step=2, color_index=0, only_show_amount=2
                 print(colored((' ' * indent) + f'{item}', current_color))
             else:
                 print(colored((' ' * indent) + f'- {item}', current_color))
-    
     if isinstance(data, dict):
         for key, value in data.items():
             print(colored(f'{key} [{len(data)}]:', colors[color_index % len(colors)]), end='')
