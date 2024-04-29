@@ -1,7 +1,8 @@
 from mp_api.client import MPRester
 import pickle
+from prettyprint import prettyPrint
 
-mpr = MPRester("your API key here")
+mpr = MPRester("Your API key here")
 
 docs = mpr.materials.summary.search(fields=["ordering", "material_id", "energy_per_atom", "band_gap", "uncorrected_energy_per_atom", "structure"])
 data = [
@@ -17,6 +18,7 @@ data = [
     for item in docs
 ]
 
+prettyPrint(data)
 
 with open('scraped_properties.pickle', 'wb') as handle:
     pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
