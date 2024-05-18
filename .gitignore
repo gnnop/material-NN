@@ -2,6 +2,7 @@ data/*
 *.params
 *.pyc
 *.csv
+*.pickle
 
 
 .vscode/

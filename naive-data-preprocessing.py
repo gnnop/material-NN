@@ -2,6 +2,7 @@ from _common_data_preprocessing import *
 import pickle
 import math
 import numpy as npx
+import extended_atom_encoding
 from prettyprint import prettyPrint
 
 
@@ -167,9 +168,8 @@ def format(rFile, wFile, sym, topo):
     atomSets = [40, 24, 16, 12, 8, 6]
     relativeCoordinateLength = 5
     absoluteCoordinateLength = 10
-    numElements = globals["dataSize"] + atomSize*sum(atomSets) + globals["labelSize"]
     fourierFeaturesPeriodScale = 2
-    sizeOfAtomType = 7 + 16 + 1 + 1 # On the Periodic Table, 7 for the row, 16 for the column / 2, 1 for the spin (column % 2). Plus 1 for the existence of the atom type
+    sizeOfAtomType = len(extended_atom_encoding.get_atom_from_db(1))
     sizeOfAtomPosition = 1 + 3*relativeCoordinateLength # 1 for the existence of the atom, 3 Fourier Features representations of the relative coordinates
     sizeOfGlobalAxisCoordinates = 3*relativeCoordinateLength # 1 for the existence of the atom type, 3 Fourier Features representations of the absolute coordinates
 
@@ -381,17 +381,7 @@ def format(rFile, wFile, sym, topo):
                     continue
 
                 # Atom type
-                outputAtomType = []
-                atomRow, atomCol, atomSpin = atomToCoords(atoms[i]['type'])
-                atomRowOneHot = [0]*7
-                atomRowOneHot[atomRow] = 1
-                atomColOneHot = [0]*16
-                atomColOneHot[atomCol] = 1
-                atomSpinOneHot = [atomSpin]
-                outputAtomType.append(atomRowOneHot)
-                outputAtomType.append(atomColOneHot)
-                outputAtomType.append(atomSpinOneHot)
-                outputAtomType.append([1])
+                outputAtomType = extended_atom_encoding.get_atom_from_db(atoms[i]['type'])
 
                 # Atom positions
                 # Put all atom positions in a single list
@@ -405,11 +395,10 @@ def format(rFile, wFile, sym, topo):
                     outputIndex = j*sizeOfAtomPosition
                     outputAtomPositions[outputIndex:outputIndex+sizeOfAtomPosition] = list(flatten(outputAtom))
                 
-                
-                outputAtomType.append(outputAtomPositions)
+                thisSetOfAtoms = [outputAtomType, outputAtomPositions]
                 
                 # Done with this atom type
-                outputAtoms.append(outputAtomType)
+                outputAtoms.append(thisSetOfAtoms)
 
             # Space group
             outputSpaceGroup = [0]*231
