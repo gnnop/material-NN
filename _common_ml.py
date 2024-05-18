@@ -252,14 +252,14 @@ def atomToCoords(name):
             exit()
 
 # We have the following data flow:
-# SM:
-#  ES
-#  ESFD
-# TI:
-#  NLC
-#  SEBR
+# SM:        (topological SemiMetal)
+#  ES        (Enforced Semimetal)
+#  ESFD      (Enforced Semimetals with Fermi Degeneracy)
+# TI:        (Topological Insulator)
+#  NLC       (Not a Linear Combination of Elementary Band Representations)
+#  SEBR      (Split Elementary Band Representations)
 # trivial:
-#  LCEBR
+#  LCEBR     (Linear Combination of Elementary Band Representations)
 # other - error
 
 
