@@ -6,10 +6,9 @@ from jax import random
 from _common_ml import *
 from prettyprint import prettyPrint
 
-
 # hyperparameters
 hp = {
-    "dropoutRate": 0.1
+    "dropoutRate": 0.05
 }
 
 
@@ -18,22 +17,10 @@ hp = {
 def net_fn(batch, is_training=False, dropout_rate=0):
     mlp = hk.Sequential([
         # fully connected layer with dropout
-        hk.Linear(3000), jax.nn.relu,
-        # Apply dropout only during training, with corrected argument order
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
-
-        # fully connected layer with dropout
-        hk.Linear(2000), jax.nn.relu,
-        lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,       
-
-        # fully connected layer with dropout
         hk.Linear(1000), jax.nn.relu,
+        # Apply dropout only during training, with corrected argument order
         lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x,  
-        
-        # fully connected layer
-        hk.Linear(100), jax.nn.relu,
-        # lambda x: hk.dropout(rng=hk.next_rng_key(), x=x, rate=dropout_rate) if is_training else x, 
-        
+
         hk.Linear(5)  # Assuming full set of categories
     ])
     return mlp(batch)
@@ -45,6 +32,8 @@ net = hk.transform(net_fn)
 
 # Function to partition the dataset into training and validation sets
 def partition_dataset(data, labels, validation_percentage):
+    data = data.astype(jnp.float16)
+    labels = labels.astype(jnp.float16)
     # Calculate the number of validation samples
     num_data = data.shape[0]
     num_val_samples = int(num_data * validation_percentage)
@@ -104,7 +93,7 @@ def train(obj):
     print(f"{X_val.shape[0]/(X_train.shape[0] + X_val.shape[0]) * 100}% of the data is used for validation")
 
 
-    batch_size = X_train.shape[0] // 64
+    batch_size = X_train.shape[0]
 
     # Initialize the model
     rng = random.PRNGKey(0x09F911029D74E35BD84156C5635688C0 % 2**32)
@@ -112,14 +101,14 @@ def train(obj):
     params = net.init(init_rng, X_train[:batch_size], is_training=True)
 
     # Training loop
-    num_epochs = 1000
+    num_epochs = 5000
     num_batches = X_train.shape[0] // batch_size
 
     # Learning rate schedule: linear ramp-up and then constant
-    ramp_up_epochs = 50  # Number of epochs to linearly ramp up the learning rate
+    ramp_up_epochs = 1000  # Number of epochs to linearly ramp up the learning rate
     total_ramp_up_steps = ramp_up_epochs * num_batches
-    lr_schedule = optax.linear_schedule(init_value=1e-5, 
-                                        end_value =1e-3, 
+    lr_schedule = optax.linear_schedule(init_value=1e-6, 
+                                        end_value =5e-5, 
                                         transition_steps=total_ramp_up_steps)
 
     # Optimizer
@@ -140,6 +129,7 @@ def train(obj):
         val_loss = loss_fn(params, batch_rng, X_val, y_val)
         train_accuracy = accuracy_fn(params, batch_rng, X_train, y_train)
         val_accuracy = accuracy_fn(params, batch_rng, X_val, y_val)
+        # if epoch % 2 == 0:
         print(f"Epoch {epoch}, Training loss: {train_loss}, Validation loss: {val_loss}, Training accuracy: {train_accuracy}, Validation accuracy: {val_accuracy}")
     # end of for epoch
         

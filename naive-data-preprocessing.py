@@ -165,9 +165,9 @@ def format(rFile, wFile, sym, topo):
     # defined in _common_data_preprocessing.py
 
     # More configuration
-    atomSets = [40, 24, 16, 12, 8, 6]
-    relativeCoordinateLength = 5
-    absoluteCoordinateLength = 10
+    atomSets = [120, 80, 60, 40, 40, 40]
+    relativeCoordinateLength = 0
+    absoluteCoordinateLength = 0
     fourierFeaturesPeriodScale = 2
     sizeOfAtomType = len(extended_atom_encoding.get_atom_from_db(1))
     sizeOfAtomPosition = 1 + 3*relativeCoordinateLength # 1 for the existence of the atom, 3 Fourier Features representations of the relative coordinates
